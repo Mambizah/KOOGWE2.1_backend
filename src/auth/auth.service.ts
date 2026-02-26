@@ -26,7 +26,6 @@ export class AuthService {
     if (existing) throw new ConflictException('Cet email est déjà utilisé');
 
     const hashedPassword = await bcrypt.hash(createAuthDto.password, 12);
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString(); // 6 chiffres
     const isDriver = createAuthDto.role === 'DRIVER';
 
     const newUser = await this.prisma.user.create({
@@ -36,39 +35,56 @@ export class AuthService {
         password: hashedPassword,
         phone: createAuthDto.phone,
         role: createAuthDto.role ?? 'PASSENGER',
-        // En dev : compte activé directement.
+        // ✅ Compte activé directement — pas de vérification email
         isVerified: true,
         accountStatus: 'EMAIL_VERIFIED',
-        verificationToken: verificationCode,
-        // ✅ FIX : Créer le wallet pour TOUS les utilisateurs
         wallet: { create: {} },
-        // ✅ Créer le profil chauffeur automatiquement si DRIVER
         driverProfile: isDriver ? { create: {} } : undefined,
       },
     });
 
-    // En prod, décommenter :
-    // await this.mailService.sendVerificationCode(newUser.email, verificationCode);
+    console.log('✅ Nouveau compte créé:', newUser.email, '| Rôle:', newUser.role);
 
-    return { message: 'Compte créé avec succès', email: newUser.email };
+    // ✅ Token retourné directement — l'app navigue sans OTP
+    const payload = { sub: newUser.id, email: newUser.email, role: newUser.role };
+    const access_token = await this.jwtService.signAsync(payload);
+
+    return {
+      message: 'Compte créé avec succès',
+      email: newUser.email,
+      access_token,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+        accountStatus: newUser.accountStatus,
+      },
+    };
   }
 
-  // ---- VÉRIFICATION EMAIL ----
+  // ---- VÉRIFICATION EMAIL (désactivée — retourne token sans vérifier code) ----
   async verifyEmail(email: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) throw new BadRequestException('Email introuvable');
-    if (user.isVerified) return { message: 'Compte déjà vérifié' };
-    if (user.verificationToken !== code) throw new BadRequestException('Code invalide');
 
-    await this.prisma.user.update({
-      where: { email },
-      data: {
-        isVerified: true,
-        accountStatus: 'EMAIL_VERIFIED',
-        verificationToken: null,
+    const payload = { sub: user.id, email: user.email, role: user.role };
+    return {
+      message: 'Compte vérifié',
+      access_token: await this.jwtService.signAsync(payload),
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        accountStatus: user.accountStatus,
       },
-    });
-    return { message: 'Compte vérifié avec succès !' };
+    };
+  }
+
+  // ---- RENVOI CODE OTP (désactivé) ----
+  async resendOtp(email: string) {
+    return { message: 'Code renvoyé avec succès' };
   }
 
   // ---- CONNEXION ----
@@ -77,19 +93,17 @@ export class AuthService {
 
     if (!user) throw new UnauthorizedException('Email incorrect');
     if (!user.isVerified)
-      throw new UnauthorizedException('Veuillez vérifier votre email avant de vous connecter.');
+      throw new UnauthorizedException('Compte non activé. Contactez le support.');
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) throw new UnauthorizedException('Mot de passe incorrect');
 
-    // Mettre à jour lastLoginAt
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
     const payload = { sub: user.id, email: user.email, role: user.role };
-
     return {
       access_token: await this.jwtService.signAsync(payload),
       user: {

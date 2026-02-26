@@ -21,8 +21,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@aws-sdk/client-rekognition": "^3.993.0",
-    "@aws-sdk/client-s3": "^3.993.0",
+    "@aws-sdk/client-rekognition": "^3.998.0",
+    "@aws-sdk/client-s3": "^3.998.0",
     "@nestjs/common": "^11.1.14",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.1.14",
@@ -46,7 +46,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "socket.io": "^4.8.3",
-    "stripe": "^20.3.1"
+    "stripe": "^20.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

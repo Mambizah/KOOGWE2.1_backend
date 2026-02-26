@@ -9,19 +9,19 @@ export declare class AuthService {
     constructor(prisma: PrismaService, jwtService: JwtService, mailService: MailService);
     create(createAuthDto: CreateAuthDto): Promise<{
         message: string;
-        email: string;
+        email: any;
     }>;
     verifyEmail(email: string, code: string): Promise<{
         message: string;
     }>;
     login(email: string, password: string): Promise<{
-        access_token: string;
+        access_token: any;
         user: {
-            id: string;
-            email: string;
-            name: string;
-            role: import(".prisma/client").$Enums.Role;
-            accountStatus: import(".prisma/client").$Enums.AccountStatus;
+            id: any;
+            email: any;
+            name: any;
+            role: any;
+            accountStatus: any;
         };
     }>;
 }

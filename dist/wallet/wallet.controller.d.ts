@@ -28,18 +28,5 @@ export declare class WalletController {
         success: boolean;
         message: string;
     }>;
-    getTransactions(userId: string): Promise<{
-        id: string;
-        createdAt: Date;
-        userId: string;
-        type: import(".prisma/client").$Enums.TransactionType;
-        paymentMethod: import(".prisma/client").$Enums.PaymentMethod | null;
-        status: import(".prisma/client").$Enums.TransactionStatus;
-        completedAt: Date | null;
-        amount: number;
-        rideId: string | null;
-        stripePaymentId: string | null;
-        reference: string | null;
-        rejectionReason: string | null;
-    }[]>;
+    getTransactions(userId: string): Promise<any>;
 }

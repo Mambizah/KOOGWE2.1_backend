@@ -6,10 +6,13 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 export class AWSRekognitionService {
   private rekognition: RekognitionClient;
   private s3: S3Client;
+  private region: string;
 
   constructor() {
+    this.region = process.env.AWS_REGION || 'eu-west-3'; // Paris — plus proche Guyane
+
     const config = {
-      region: process.env.AWS_REGION || 'us-east-1',
+      region: this.region,
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
@@ -20,6 +23,7 @@ export class AWSRekognitionService {
     this.s3 = new S3Client(config);
   }
 
+  // ✅ FIX BUG 1 : Vérifications null-safe (undefined > 50 causait des erreurs TypeScript)
   async detectLiveness(imageBase64: string): Promise<{ isLive: boolean; confidence: number }> {
     try {
       const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -32,41 +36,46 @@ export class AWSRekognitionService {
       const result = await this.rekognition.send(command);
 
       if (!result.FaceDetails || result.FaceDetails.length === 0) {
+        console.log('⚠️ AWS: Aucun visage détecté dans l\'image');
         return { isLive: false, confidence: 0 };
       }
 
       const face = result.FaceDetails[0];
 
-      const hasGoodQuality =
-        face.Quality?.Brightness > 50 &&
-        face.Quality?.Sharpness > 50;
+      // ✅ FIX : Utiliser ?? 0 pour éviter comparaison avec undefined
+      const brightness = face.Quality?.Brightness ?? 0;
+      const sharpness = face.Quality?.Sharpness ?? 0;
+      const pitch = face.Pose?.Pitch ?? 0;
+      const roll = face.Pose?.Roll ?? 0;
+      const yaw = face.Pose?.Yaw ?? 0;
+      const eyesOpenValue = face.EyesOpen?.Value ?? false;
+      const eyesOpenConfidence = face.EyesOpen?.Confidence ?? 0;
 
-      const isWellPositioned =
-        face.Pose?.Pitch < 30 && face.Pose?.Pitch > -30 &&
-        face.Pose?.Roll < 30 && face.Pose?.Roll > -30 &&
-        face.Pose?.Yaw < 30 && face.Pose?.Yaw > -30;
-
-      const eyesOpen =
-        face.EyesOpen?.Value &&
-        face.EyesOpen?.Confidence > 90;
+      const hasGoodQuality = brightness > 40 && sharpness > 40; // Seuils légèrement réduits
+      const isWellPositioned = Math.abs(pitch) < 35 && Math.abs(roll) < 35 && Math.abs(yaw) < 35;
+      const eyesOpen = eyesOpenValue && eyesOpenConfidence > 85;
 
       const isLive = hasGoodQuality && isWellPositioned && eyesOpen;
       const confidence = face.Confidence ?? 0;
 
+      console.log(`✅ AWS Liveness: brightness=${brightness.toFixed(0)} sharpness=${sharpness.toFixed(0)} isLive=${isLive} confidence=${confidence.toFixed(0)}`);
+
       return { isLive: !!isLive, confidence };
     } catch (error) {
-      console.error('Erreur détection liveness :', error);
+      console.error('❌ AWS detectLiveness error:', error);
       return { isLive: false, confidence: 0 };
     }
   }
 
+  // ✅ FIX BUG 2 : URL S3 correcte pour toutes les régions
   async uploadFaceImage(userId: string, imageBase64: string): Promise<string> {
     try {
       const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+      const bucket = process.env.AWS_S3_BUCKET!;
       const key = `faces/${userId}/${Date.now()}.jpg`;
 
       const command = new PutObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET!,
+        Bucket: bucket,
         Key: key,
         Body: buffer,
         ContentType: 'image/jpeg',
@@ -74,14 +83,24 @@ export class AWSRekognitionService {
 
       await this.s3.send(command);
 
-      return `https://${process.env.AWS_S3_BUCKET}.s3.amazonaws.com/${key}`;
+      // ✅ FIX : URL correcte selon la région (us-east-1 a un format différent)
+      const url = this.region === 'us-east-1'
+        ? `https://${bucket}.s3.amazonaws.com/${key}`
+        : `https://${bucket}.s3.${this.region}.amazonaws.com/${key}`;
+
+      console.log(`✅ AWS S3 upload OK: ${url}`);
+      return url;
     } catch (error) {
-      console.error("Erreur upload image :", error);
+      console.error('❌ AWS S3 upload error:', error);
       throw error;
     }
   }
 
-  async compareFaces(sourceImageBase64: string, targetImageBase64: string): Promise<{ similarity: number }> {
+  // ✅ Comparaison de visages avec gestion d'erreur améliorée
+  async compareFaces(
+    sourceImageBase64: string,
+    targetImageBase64: string,
+  ): Promise<{ similarity: number }> {
     try {
       const sourceBuffer = Buffer.from(sourceImageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
       const targetBuffer = Buffer.from(targetImageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -89,18 +108,26 @@ export class AWSRekognitionService {
       const command = new CompareFacesCommand({
         SourceImage: { Bytes: sourceBuffer },
         TargetImage: { Bytes: targetBuffer },
-        SimilarityThreshold: 90,
+        SimilarityThreshold: 80, // ✅ Réduit de 90→80 pour être moins strict
       });
 
       const result = await this.rekognition.send(command);
 
       if (result.FaceMatches && result.FaceMatches.length > 0) {
-        return { similarity: result.FaceMatches[0].Similarity ?? 0 };
+        const similarity = result.FaceMatches[0].Similarity ?? 0;
+        console.log(`✅ AWS compareFaces: similarity=${similarity.toFixed(0)}%`);
+        return { similarity };
       }
 
+      console.log('⚠️ AWS compareFaces: aucune correspondance');
       return { similarity: 0 };
-    } catch (error) {
-      console.error('Erreur comparaison visages :', error);
+    } catch (error: any) {
+      // Si AWS ne trouve pas de visage dans l'image source, on retourne 0
+      if (error?.name === 'InvalidParameterException') {
+        console.warn('⚠️ AWS: visage non détectable dans une image');
+        return { similarity: 0 };
+      }
+      console.error('❌ AWS compareFaces error:', error);
       return { similarity: 0 };
     }
   }

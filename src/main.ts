@@ -8,6 +8,10 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Augmenter la limite pour les photos base64 (facial verification)
+  app.use(require('express').json({ limit: '50mb' }));
+  app.use(require('express').urlencoded({ limit: '50mb', extended: true }));
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -16,7 +20,7 @@ async function bootstrap() {
     }),
   );
 
-  // ✅ FIX CORS : Support dev (localhost) + prod (Railway + app mobile)
+  //: Support dev (localhost) + prod (Railway + app mobile)
   const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:42559',
