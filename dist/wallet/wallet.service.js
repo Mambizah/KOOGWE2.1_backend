@@ -20,7 +20,7 @@ let WalletService = class WalletService {
         const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
         return { balance: wallet?.balance || 0 };
     }
-    async rechargeWithCard(userId, amount, paymentMethodId) {
+    async rechargeWithCard(userId, amount, _paymentMethodId) {
         try {
             await this.prisma.$transaction([
                 this.prisma.wallet.update({
@@ -97,6 +97,52 @@ let WalletService = class WalletService {
         catch (error) {
             console.error('Erreur paiement wallet:', error);
             return { success: false, message: 'Erreur lors du paiement' };
+        }
+    }
+    async recordCashPayment(userId, rideId, amount) {
+        try {
+            const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
+            if (!ride) {
+                return { success: false, message: 'Course introuvable' };
+            }
+            if (ride.passengerId !== userId) {
+                return { success: false, message: 'Utilisateur non autorisé' };
+            }
+            await this.prisma.$transaction([
+                this.prisma.transaction.create({
+                    data: {
+                        userId,
+                        type: 'PAYMENT',
+                        amount: -amount,
+                        status: 'COMPLETED',
+                        rideId,
+                        paymentMethod: 'CASH',
+                    },
+                }),
+                ...(ride.driverId
+                    ? [
+                        this.prisma.transaction.create({
+                            data: {
+                                userId: ride.driverId,
+                                type: 'RECHARGE',
+                                amount,
+                                status: 'COMPLETED',
+                                rideId,
+                                paymentMethod: 'CASH',
+                            },
+                        }),
+                    ]
+                    : []),
+                this.prisma.ride.update({
+                    where: { id: rideId },
+                    data: { isPaid: true, paymentMethod: 'CASH' },
+                }),
+            ]);
+            return { success: true, message: 'Paiement cash enregistré' };
+        }
+        catch (error) {
+            console.error('Erreur paiement cash:', error);
+            return { success: false, message: 'Erreur lors de l’enregistrement cash' };
         }
     }
     async requestWithdrawal(userId, amount) {

@@ -11,7 +11,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RidesGateway = void 0;
 const websockets_1 = require("@nestjs/websockets");
@@ -39,6 +38,7 @@ let RidesGateway = class RidesGateway {
                     secret: this.configService.get('JWT_SECRET'),
                 });
                 this.socketUserMap.set(client.id, payload.sub);
+                client.join(`user_${payload.sub}`);
                 console.log(`🔌 Client connecté: ${client.id} (user: ${payload.sub})`);
             }
             else {
@@ -61,22 +61,55 @@ let RidesGateway = class RidesGateway {
     handleLeaveRide(client, data) {
         client.leave(`ride_${data.rideId}`);
     }
-    handleDriverOnline(client, data) {
+    async handleDriverOnline(client, data) {
         const authenticatedUserId = this.socketUserMap.get(client.id);
         if (authenticatedUserId && authenticatedUserId !== data.driverId) {
             console.warn(`⚠️ Tentative d'usurpation: ${client.id}`);
             return;
         }
+        const driver = await this.prisma.user.findUnique({
+            where: { id: data.driverId },
+            include: { driverProfile: true },
+        });
+        const hasVehicleInfo = Boolean(driver?.driverProfile?.vehicleMake
+            && driver?.driverProfile?.vehicleModel
+            && driver?.driverProfile?.licensePlate);
+        const canGoOnline = Boolean(driver
+            && driver.role === 'DRIVER'
+            && driver.driverProfile
+            && driver.driverProfile.faceVerified
+            && driver.driverProfile.documentsUploaded
+            && driver.driverProfile.adminApproved
+            && hasVehicleInfo);
+        if (!canGoOnline) {
+            this.server.to(client.id).emit('driver_restricted', {
+                reason: 'Compte chauffeur incomplet: vérification, documents, véhicule et validation admin requis',
+            });
+            return;
+        }
+        await this.prisma.driverProfile.update({
+            where: { userId: data.driverId },
+            data: { isOnline: true },
+        });
         client.join('drivers_online');
         console.log(`🟢 Chauffeur ${data.driverId} en ligne`);
     }
-    handleDriverOffline(client, data) {
+    async handleDriverOffline(client, data) {
         client.leave('drivers_online');
+        await this.prisma.driverProfile
+            .update({ where: { userId: data.driverId }, data: { isOnline: false } })
+            .catch(() => undefined);
         console.log(`🔴 Chauffeur ${data.driverId} hors ligne`);
     }
     notifyDrivers(rideData) {
         this.server.to('drivers_online').emit('new_ride', rideData);
         console.log(`📢 Nouvelle course ${rideData.id} envoyée aux chauffeurs`);
+    }
+    notifyPassenger(passengerId, event, payload) {
+        this.server.to(`user_${passengerId}`).emit(event, payload);
+    }
+    notifyRideRoom(rideId, event, payload) {
+        this.server.to(`ride_${rideId}`).emit(event, payload);
     }
     async handleAcceptRide(client, data) {
         try {
@@ -91,6 +124,21 @@ let RidesGateway = class RidesGateway {
             });
             if (!driver)
                 return;
+            const hasVehicleInfo = Boolean(driver.driverProfile?.vehicleMake
+                && driver.driverProfile?.vehicleModel
+                && driver.driverProfile?.licensePlate);
+            const canAccept = Boolean(driver.role === 'DRIVER'
+                && driver.driverProfile
+                && driver.driverProfile.faceVerified
+                && driver.driverProfile.documentsUploaded
+                && driver.driverProfile.adminApproved
+                && hasVehicleInfo);
+            if (!canAccept) {
+                this.server.to(client.id).emit('driver_restricted', {
+                    reason: 'Compte chauffeur incomplet: vérification, documents, véhicule et validation admin requis',
+                });
+                return;
+            }
             const ride = await this.prisma.ride.findUnique({ where: { id: data.rideId } });
             if (!ride || ride.status !== client_1.RideStatus.REQUESTED) {
                 console.warn(`⚠️ Course ${data.rideId} non disponible`);
@@ -225,14 +273,14 @@ let RidesGateway = class RidesGateway {
 exports.RidesGateway = RidesGateway;
 __decorate([
     (0, websockets_1.WebSocketServer)(),
-    __metadata("design:type", typeof (_c = typeof socket_io_1.Server !== "undefined" && socket_io_1.Server) === "function" ? _c : Object)
+    __metadata("design:type", socket_io_1.Server)
 ], RidesGateway.prototype, "server", void 0);
 __decorate([
     (0, websockets_1.SubscribeMessage)('join_ride'),
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_d = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _d : Object, Object]),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", void 0)
 ], RidesGateway.prototype, "handleJoinRide", null);
 __decorate([
@@ -240,7 +288,7 @@ __decorate([
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_e = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _e : Object, Object]),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", void 0)
 ], RidesGateway.prototype, "handleLeaveRide", null);
 __decorate([
@@ -248,23 +296,23 @@ __decorate([
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_f = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _f : Object, Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", Promise)
 ], RidesGateway.prototype, "handleDriverOnline", null);
 __decorate([
     (0, websockets_1.SubscribeMessage)('driver_offline'),
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_g = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _g : Object, Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
+    __metadata("design:returntype", Promise)
 ], RidesGateway.prototype, "handleDriverOffline", null);
 __decorate([
     (0, websockets_1.SubscribeMessage)('accept_ride'),
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_h = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _h : Object, Object]),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", Promise)
 ], RidesGateway.prototype, "handleAcceptRide", null);
 __decorate([
@@ -272,7 +320,7 @@ __decorate([
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_j = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _j : Object, Object]),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", Promise)
 ], RidesGateway.prototype, "handleDriverArrived", null);
 __decorate([
@@ -280,7 +328,7 @@ __decorate([
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_k = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _k : Object, Object]),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", Promise)
 ], RidesGateway.prototype, "handleStartTrip", null);
 __decorate([
@@ -288,7 +336,7 @@ __decorate([
     __param(0, (0, websockets_1.ConnectedSocket)()),
     __param(1, (0, websockets_1.MessageBody)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_l = typeof socket_io_1.Socket !== "undefined" && socket_io_1.Socket) === "function" ? _l : Object, Object]),
+    __metadata("design:paramtypes", [socket_io_1.Socket, Object]),
     __metadata("design:returntype", Promise)
 ], RidesGateway.prototype, "handleFinishTrip", null);
 __decorate([
@@ -309,6 +357,8 @@ exports.RidesGateway = RidesGateway = __decorate([
     (0, websockets_1.WebSocketGateway)({
         cors: { origin: '*' },
     }),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService, typeof (_a = typeof jwt_1.JwtService !== "undefined" && jwt_1.JwtService) === "function" ? _a : Object, typeof (_b = typeof config_1.ConfigService !== "undefined" && config_1.ConfigService) === "function" ? _b : Object])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        jwt_1.JwtService,
+        config_1.ConfigService])
 ], RidesGateway);
 //# sourceMappingURL=rides.gateway.js.map

@@ -75,7 +75,9 @@ export class UsersService {
       include: { driverProfile: true },
     });
     if (!user) throw new NotFoundException('Utilisateur introuvable');
-    const { password, verificationToken, ...safeUser } = user;
+    const safeUser: any = { ...user };
+    delete safeUser.password;
+    delete safeUser.verificationToken;
     return safeUser;
   }
 }

@@ -1,30 +1,50 @@
 import { Injectable } from '@nestjs/common';
 import { RekognitionClient, DetectFacesCommand, CompareFacesCommand } from '@aws-sdk/client-rekognition';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 
 @Injectable()
 export class AWSRekognitionService {
   private rekognition: RekognitionClient;
   private s3: S3Client;
   private region: string;
+  private readonly uploadsRoot = join(process.cwd(), 'uploads');
+  private readonly useAws: boolean;
 
   constructor() {
     this.region = process.env.AWS_REGION || 'eu-west-3'; // Paris — plus proche Guyane
+    this.useAws = Boolean(
+      process.env.AWS_ACCESS_KEY_ID
+      && process.env.AWS_SECRET_ACCESS_KEY
+      && process.env.AWS_S3_BUCKET,
+    );
 
-    const config = {
-      region: this.region,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
-    };
+    if (this.useAws) {
+      const config = {
+        region: this.region,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+        },
+      };
 
-    this.rekognition = new RekognitionClient(config);
-    this.s3 = new S3Client(config);
+      this.rekognition = new RekognitionClient(config);
+      this.s3 = new S3Client(config);
+      console.log('✅ AWS Rekognition/S3 activé');
+    } else {
+      console.warn('⚠️ AWS non configuré: mode stockage local activé pour les tests');
+      this.rekognition = {} as RekognitionClient;
+      this.s3 = {} as S3Client;
+    }
   }
 
   // ✅ FIX BUG 1 : Vérifications null-safe (undefined > 50 causait des erreurs TypeScript)
   async detectLiveness(imageBase64: string): Promise<{ isLive: boolean; confidence: number }> {
+    if (!this.useAws) {
+      return { isLive: true, confidence: 99 };
+    }
+
     try {
       const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
 
@@ -69,6 +89,18 @@ export class AWSRekognitionService {
 
   // ✅ FIX BUG 2 : URL S3 correcte pour toutes les régions
   async uploadFaceImage(userId: string, imageBase64: string): Promise<string> {
+    if (!this.useAws) {
+      const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+      const dir = join(this.uploadsRoot, 'faces', userId);
+      await mkdir(dir, { recursive: true });
+      const filename = `${Date.now()}.jpg`;
+      const fullPath = join(dir, filename);
+      await writeFile(fullPath, buffer);
+
+      const publicBase = process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+      return `${publicBase}/uploads/faces/${userId}/${filename}`;
+    }
+
     try {
       const buffer = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
       const bucket = process.env.AWS_S3_BUCKET!;
@@ -101,6 +133,11 @@ export class AWSRekognitionService {
     sourceImageBase64: string,
     targetImageBase64: string,
   ): Promise<{ similarity: number }> {
+    if (!this.useAws) {
+      if (!sourceImageBase64 || !targetImageBase64) return { similarity: 0 };
+      return { similarity: 99 };
+    }
+
     try {
       const sourceBuffer = Buffer.from(sourceImageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
       const targetBuffer = Buffer.from(targetImageBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');

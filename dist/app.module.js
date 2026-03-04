@@ -16,6 +16,7 @@ const users_module_1 = require("./users/users.module");
 const rides_module_1 = require("./rides/rides.module");
 const face_verification_module_1 = require("./face-verification/face-verification.module");
 const wallet_module_1 = require("./wallet/wallet.module");
+const documents_module_1 = require("./documents/documents.module");
 const prisma_service_1 = require("./prisma.service");
 let AppModule = class AppModule {
 };
@@ -31,6 +32,7 @@ exports.AppModule = AppModule = __decorate([
             rides_module_1.RidesModule,
             face_verification_module_1.FaceVerificationModule,
             wallet_module_1.WalletModule,
+            documents_module_1.DocumentsModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService, prisma_service_1.PrismaService],

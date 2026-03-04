@@ -29,6 +29,9 @@ let WalletController = class WalletController {
     async payRide(dto) {
         return this.walletService.payRideFromWallet(dto.userId, dto.rideId, dto.amount);
     }
+    async recordCashPayment(dto) {
+        return this.walletService.recordCashPayment(dto.userId, dto.rideId, dto.amount);
+    }
     async requestWithdrawal(dto) {
         return this.walletService.requestWithdrawal(dto.userId, dto.amount);
     }
@@ -58,6 +61,13 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], WalletController.prototype, "payRide", null);
+__decorate([
+    (0, common_1.Post)('record-cash'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], WalletController.prototype, "recordCashPayment", null);
 __decorate([
     (0, common_1.Post)('request-withdrawal'),
     __param(0, (0, common_1.Body)()),

@@ -8,7 +8,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
@@ -29,7 +28,6 @@ let AuthService = class AuthService {
         if (existing)
             throw new common_1.ConflictException('Cet email est déjà utilisé');
         const hashedPassword = await bcrypt.hash(createAuthDto.password, 12);
-        const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
         const isDriver = createAuthDto.role === 'DRIVER';
         const newUser = await this.prisma.user.create({
             data: {
@@ -40,37 +38,56 @@ let AuthService = class AuthService {
                 role: createAuthDto.role ?? 'PASSENGER',
                 isVerified: true,
                 accountStatus: 'EMAIL_VERIFIED',
-                verificationToken: verificationCode,
                 wallet: { create: {} },
                 driverProfile: isDriver ? { create: {} } : undefined,
             },
         });
-        return { message: 'Compte créé avec succès', email: newUser.email };
+        console.log('✅ Nouveau compte créé:', newUser.email, '| Rôle:', newUser.role);
+        await this.mailService.sendVerificationCode(newUser.email, '000000');
+        if (newUser.name) {
+            await this.mailService.sendWelcomeEmail(newUser.email, newUser.name);
+        }
+        const payload = { sub: newUser.id, email: newUser.email, role: newUser.role };
+        const access_token = await this.jwtService.signAsync(payload);
+        return {
+            message: 'Compte créé avec succès',
+            email: newUser.email,
+            access_token,
+            user: {
+                id: newUser.id,
+                email: newUser.email,
+                name: newUser.name,
+                role: newUser.role,
+                accountStatus: newUser.accountStatus,
+            },
+        };
     }
-    async verifyEmail(email, code) {
+    async verifyEmail(email, _code) {
         const user = await this.prisma.user.findUnique({ where: { email } });
         if (!user)
             throw new common_1.BadRequestException('Email introuvable');
-        if (user.isVerified)
-            return { message: 'Compte déjà vérifié' };
-        if (user.verificationToken !== code)
-            throw new common_1.BadRequestException('Code invalide');
-        await this.prisma.user.update({
-            where: { email },
-            data: {
-                isVerified: true,
-                accountStatus: 'EMAIL_VERIFIED',
-                verificationToken: null,
+        const payload = { sub: user.id, email: user.email, role: user.role };
+        return {
+            message: 'Compte vérifié',
+            access_token: await this.jwtService.signAsync(payload),
+            user: {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                accountStatus: user.accountStatus,
             },
-        });
-        return { message: 'Compte vérifié avec succès !' };
+        };
+    }
+    async resendOtp(_email) {
+        return { message: 'Code renvoyé avec succès' };
     }
     async login(email, password) {
         const user = await this.prisma.user.findUnique({ where: { email } });
         if (!user)
             throw new common_1.UnauthorizedException('Email incorrect');
         if (!user.isVerified)
-            throw new common_1.UnauthorizedException('Veuillez vérifier votre email avant de vous connecter.');
+            throw new common_1.UnauthorizedException('Compte non activé. Contactez le support.');
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch)
             throw new common_1.UnauthorizedException('Mot de passe incorrect');
@@ -94,6 +111,8 @@ let AuthService = class AuthService {
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService, typeof (_a = typeof jwt_1.JwtService !== "undefined" && jwt_1.JwtService) === "function" ? _a : Object, mail_service_1.MailService])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        jwt_1.JwtService,
+        mail_service_1.MailService])
 ], AuthService);
 //# sourceMappingURL=auth.service.js.map

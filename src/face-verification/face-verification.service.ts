@@ -96,12 +96,12 @@ export class FaceVerificationService {
         data: { faceVerified: true, faceImageUrl, accountStatus: 'DOCUMENTS_PENDING' },
       });
 
-      try {
-        await this.prisma.driverProfile.update({
+      await this.prisma.driverProfile
+        .update({
           where: { userId },
           data: { faceVerified: true, faceVerifiedAt: new Date() },
-        });
-      } catch (_) {}
+        })
+        .catch(() => undefined);
 
       console.log(`✅ Face movements verification OK: ${userId} (similarity: ${avgSimilarity.toFixed(0)}%)`);
       return { success: true, message: 'Vérification faciale réussie' };

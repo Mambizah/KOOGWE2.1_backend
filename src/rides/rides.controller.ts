@@ -1,6 +1,7 @@
-import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { RidesService } from './rides.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { RideStatus } from '@prisma/client';
 
 @Controller('rides')
 @UseGuards(AuthGuard)
@@ -27,35 +28,45 @@ export class RidesController {
     return this.ridesService.getActiveCourses();
   }
 
+  @Post('estimate')
+  estimatePrice(@Body() dto: {
+    distanceKm: number;
+    durationMin: number;
+    vehicleType?: string;
+    zone?: string;
+    horaire?: string;
+    trafic?: string;
+    meteo?: string;
+    demande?: string;
+  }) {
+    return this.ridesService.estimatePrice(dto);
+  }
+
   @Post(':id/accept')
   acceptRide(@Param('id') id: string, @Request() req: any) {
     return this.ridesService.acceptRide(id, req.user.sub);
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body() dto: { status: any }, @Request() req: any) {
+  updateStatus(@Param('id') id: string, @Body() dto: { status: RideStatus }, @Request() req: any) {
     return this.ridesService.updateStatus(id, req.user.sub, dto.status);
   }
 
-  // ✅ Course programmée
   @Post('scheduled')
   createScheduled(@Body() dto: any, @Request() req: any) {
     return this.ridesService.createScheduledRide(req.user.sub, dto);
   }
 
-  // ✅ Partage de trajet
   @Post(':id/share')
   generateShare(@Param('id') id: string, @Request() req: any) {
     return this.ridesService.generateShareToken(id, req.user.sub);
   }
 
-  // ✅ Bouton panique
   @Post('panic')
   triggerPanic(@Body() dto: { rideId?: string; lat: number; lng: number }, @Request() req: any) {
     return this.ridesService.triggerPanic(req.user.sub, dto.rideId ?? null, dto.lat, dto.lng);
   }
 
-  // ✅ Chauffeurs favoris
   @Post('favorites/add')
   addFavorite(@Body() dto: { driverId: string }, @Request() req: any) {
     return this.ridesService.addFavoriteDriver(req.user.sub, dto.driverId);
@@ -71,9 +82,22 @@ export class RidesController {
     return this.ridesService.getFavoriteDrivers(req.user.sub);
   }
 
-  // ✅ Lien public de suivi (sans auth)
   @Get('track/:token')
   trackByToken(@Param('token') token: string) {
     return this.ridesService.getRideByShareToken(token);
+  }
+
+  @Patch(':id/cancel')
+  cancelRide(@Param('id') id: string, @Request() req: any) {
+    return this.ridesService.cancelRide(id, req.user.sub, req.user.role);
+  }
+
+  @Post(':id/rate')
+  rateRide(
+    @Param('id') id: string,
+    @Body() dto: { rating: number; comment?: string },
+    @Request() req: any,
+  ) {
+    return this.ridesService.rateRide(id, req.user.sub, req.user.role, dto.rating, dto.comment);
   }
 }

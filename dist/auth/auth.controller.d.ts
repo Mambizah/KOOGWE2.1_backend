@@ -5,19 +5,27 @@ export declare class AuthController {
     constructor(authService: AuthService);
     create(createAuthDto: CreateAuthDto): Promise<{
         message: string;
-        email: any;
+        email: string;
+        access_token: string;
+        user: {
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
+        };
     }>;
     login(body: {
         email: string;
         password: string;
     }): Promise<{
-        access_token: any;
+        access_token: string;
         user: {
-            id: any;
-            email: any;
-            name: any;
-            role: any;
-            accountStatus: any;
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
         };
     }>;
     verify(body: {
@@ -25,5 +33,13 @@ export declare class AuthController {
         code: string;
     }): Promise<{
         message: string;
+        access_token: string;
+        user: {
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
+        };
     }>;
 }

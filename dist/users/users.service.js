@@ -72,7 +72,9 @@ let UsersService = class UsersService {
         });
         if (!user)
             throw new common_1.NotFoundException('Utilisateur introuvable');
-        const { password, verificationToken, ...safeUser } = user;
+        const safeUser = { ...user };
+        delete safeUser.password;
+        delete safeUser.verificationToken;
         return safeUser;
     }
 };

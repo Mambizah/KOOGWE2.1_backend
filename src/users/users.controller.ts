@@ -31,7 +31,7 @@ export class UsersController {
   // ✅ NEW: Documents uploadés
   @Post('upload-documents')
   @UseGuards(AuthGuard)
-  async uploadDocuments(@Request() req: any, @Body() body: any) {
+  async uploadDocuments(@Request() req: any, @Body() _body: any) {
     const userId = req.user.sub;
     return this.usersService.markDocumentsUploaded(userId);
   }

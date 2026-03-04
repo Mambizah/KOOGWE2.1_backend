@@ -5,7 +5,7 @@ export declare class WalletService {
     getBalance(userId: string): Promise<{
         balance: number;
     }>;
-    rechargeWithCard(userId: string, amount: number, paymentMethodId: string): Promise<{
+    rechargeWithCard(userId: string, amount: number, _paymentMethodId: string): Promise<{
         success: boolean;
         message: string;
     }>;
@@ -13,9 +13,26 @@ export declare class WalletService {
         success: boolean;
         message: string;
     }>;
+    recordCashPayment(userId: string, rideId: string, amount: number): Promise<{
+        success: boolean;
+        message: string;
+    }>;
     requestWithdrawal(userId: string, amount: number): Promise<{
         success: boolean;
         message: string;
     }>;
-    getTransactionHistory(userId: string): Promise<any>;
+    getTransactionHistory(userId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        userId: string;
+        type: import(".prisma/client").$Enums.TransactionType;
+        paymentMethod: import(".prisma/client").$Enums.PaymentMethod | null;
+        status: import(".prisma/client").$Enums.TransactionStatus;
+        completedAt: Date | null;
+        rideId: string | null;
+        amount: number;
+        stripePaymentId: string | null;
+        reference: string | null;
+        rejectionReason: string | null;
+    }[]>;
 }

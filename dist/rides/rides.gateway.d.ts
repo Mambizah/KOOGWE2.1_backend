@@ -21,11 +21,13 @@ export declare class RidesGateway implements OnGatewayInit, OnGatewayConnection,
     }): void;
     handleDriverOnline(client: Socket, data: {
         driverId: string;
-    }): void;
+    }): Promise<void>;
     handleDriverOffline(client: Socket, data: {
         driverId: string;
-    }): void;
+    }): Promise<void>;
     notifyDrivers(rideData: any): void;
+    notifyPassenger(passengerId: string, event: string, payload: any): void;
+    notifyRideRoom(rideId: string, event: string, payload: any): void;
     handleAcceptRide(client: Socket, data: {
         rideId: string;
         driverId: string;

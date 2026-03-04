@@ -5,6 +5,7 @@ import { RidesGateway } from './rides.gateway';
 import { PrismaService } from '../prisma.service';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { MailService } from '../mail.service';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     }),
   ],
   controllers: [RidesController],
-  providers: [RidesService, RidesGateway, PrismaService, ConfigService],
+  providers: [RidesService, RidesGateway, PrismaService, ConfigService, MailService],
   exports: [RidesGateway],
 })
 export class RidesModule {}

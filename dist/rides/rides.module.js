@@ -14,6 +14,7 @@ const rides_gateway_1 = require("./rides.gateway");
 const prisma_service_1 = require("../prisma.service");
 const jwt_1 = require("@nestjs/jwt");
 const config_1 = require("@nestjs/config");
+const mail_service_1 = require("../mail.service");
 let RidesModule = class RidesModule {
 };
 exports.RidesModule = RidesModule;
@@ -30,7 +31,7 @@ exports.RidesModule = RidesModule = __decorate([
             }),
         ],
         controllers: [rides_controller_1.RidesController],
-        providers: [rides_service_1.RidesService, rides_gateway_1.RidesGateway, prisma_service_1.PrismaService, config_1.ConfigService],
+        providers: [rides_service_1.RidesService, rides_gateway_1.RidesGateway, prisma_service_1.PrismaService, config_1.ConfigService, mail_service_1.MailService],
         exports: [rides_gateway_1.RidesGateway],
     })
 ], RidesModule);

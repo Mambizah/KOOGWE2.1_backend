@@ -21,6 +21,14 @@ export declare class WalletController {
         success: boolean;
         message: string;
     }>;
+    recordCashPayment(dto: {
+        userId: string;
+        rideId: string;
+        amount: number;
+    }): Promise<{
+        success: boolean;
+        message: string;
+    }>;
     requestWithdrawal(dto: {
         userId: string;
         amount: number;
@@ -28,5 +36,18 @@ export declare class WalletController {
         success: boolean;
         message: string;
     }>;
-    getTransactions(userId: string): Promise<any>;
+    getTransactions(userId: string): Promise<{
+        id: string;
+        createdAt: Date;
+        userId: string;
+        type: import(".prisma/client").$Enums.TransactionType;
+        paymentMethod: import(".prisma/client").$Enums.PaymentMethod | null;
+        status: import(".prisma/client").$Enums.TransactionStatus;
+        completedAt: Date | null;
+        rideId: string | null;
+        amount: number;
+        stripePaymentId: string | null;
+        reference: string | null;
+        rejectionReason: string | null;
+    }[]>;
 }

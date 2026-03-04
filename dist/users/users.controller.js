@@ -32,7 +32,7 @@ let UsersController = class UsersController {
         const userId = req.user.sub;
         return this.usersService.markFaceVerified(userId);
     }
-    async uploadDocuments(req, body) {
+    async uploadDocuments(req, _body) {
         const userId = req.user.sub;
         return this.usersService.markDocumentsUploaded(userId);
     }

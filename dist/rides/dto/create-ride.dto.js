@@ -8,7 +8,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateRideDto = void 0;
 const class_validator_1 = require("class-validator");
@@ -48,8 +47,37 @@ __decorate([
     __metadata("design:type", Number)
 ], CreateRideDto.prototype, "price", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_transformer_1.Type)(() => Number),
+    __metadata("design:type", Number)
+], CreateRideDto.prototype, "distance", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsNumber)(),
+    (0, class_validator_1.Min)(0),
+    (0, class_transformer_1.Type)(() => Number),
+    __metadata("design:type", Number)
+], CreateRideDto.prototype, "duration", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateRideDto.prototype, "originAddress", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateRideDto.prototype, "destAddress", void 0);
+__decorate([
     (0, class_validator_1.IsEnum)(client_1.VehicleType),
     (0, class_validator_1.IsOptional)(),
-    __metadata("design:type", typeof (_a = typeof client_1.VehicleType !== "undefined" && client_1.VehicleType) === "function" ? _a : Object)
+    __metadata("design:type", String)
 ], CreateRideDto.prototype, "vehicleType", void 0);
+__decorate([
+    (0, class_validator_1.IsEnum)(client_1.PaymentMethod),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", String)
+], CreateRideDto.prototype, "paymentMethod", void 0);
 //# sourceMappingURL=create-ride.dto.js.map

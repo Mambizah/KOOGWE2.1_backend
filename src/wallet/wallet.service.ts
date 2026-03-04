@@ -15,7 +15,7 @@ export class WalletService {
   async rechargeWithCard(
     userId: string,
     amount: number,
-    paymentMethodId: string,
+    _paymentMethodId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       await this.prisma.$transaction([
@@ -100,6 +100,59 @@ export class WalletService {
     } catch (error) {
       console.error('Erreur paiement wallet:', error);
       return { success: false, message: 'Erreur lors du paiement' };
+    }
+  }
+
+  async recordCashPayment(
+    userId: string,
+    rideId: string,
+    amount: number,
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const ride = await this.prisma.ride.findUnique({ where: { id: rideId } });
+      if (!ride) {
+        return { success: false, message: 'Course introuvable' };
+      }
+
+      if (ride.passengerId !== userId) {
+        return { success: false, message: 'Utilisateur non autorisé' };
+      }
+
+      await this.prisma.$transaction([
+        this.prisma.transaction.create({
+          data: {
+            userId,
+            type: 'PAYMENT',
+            amount: -amount,
+            status: 'COMPLETED',
+            rideId,
+            paymentMethod: 'CASH',
+          },
+        }),
+        ...(ride.driverId
+          ? [
+              this.prisma.transaction.create({
+                data: {
+                  userId: ride.driverId,
+                  type: 'RECHARGE',
+                  amount,
+                  status: 'COMPLETED',
+                  rideId,
+                  paymentMethod: 'CASH',
+                },
+              }),
+            ]
+          : []),
+        this.prisma.ride.update({
+          where: { id: rideId },
+          data: { isPaid: true, paymentMethod: 'CASH' },
+        }),
+      ]);
+
+      return { success: true, message: 'Paiement cash enregistré' };
+    } catch (error) {
+      console.error('Erreur paiement cash:', error);
+      return { success: false, message: 'Erreur lors de l’enregistrement cash' };
     }
   }
 

@@ -15,42 +15,71 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RidesController = void 0;
 const common_1 = require("@nestjs/common");
 const rides_service_1 = require("./rides.service");
-const create_ride_dto_1 = require("./dto/create-ride.dto");
 const auth_guard_1 = require("../auth/auth.guard");
 let RidesController = class RidesController {
     constructor(ridesService) {
         this.ridesService = ridesService;
     }
-    create(req, createRideDto) {
-        const passengerId = req.user.sub;
-        return this.ridesService.create(createRideDto, passengerId);
+    create(dto, req) {
+        return this.ridesService.create(dto, req.user.sub);
     }
     getHistory(req) {
-        const userId = req.user.sub;
-        const role = req.user.role;
-        return this.ridesService.getHistory(userId, role);
+        return this.ridesService.getHistory(req.user.sub, req.user.role);
     }
     getDriverStats(req) {
-        const driverId = req.user.sub;
-        return this.ridesService.getDriverStats(driverId);
+        return this.ridesService.getDriverStats(req.user.sub);
     }
     getActiveCourses() {
         return this.ridesService.getActiveCourses();
+    }
+    estimatePrice(dto) {
+        return this.ridesService.estimatePrice(dto);
+    }
+    acceptRide(id, req) {
+        return this.ridesService.acceptRide(id, req.user.sub);
+    }
+    updateStatus(id, dto, req) {
+        return this.ridesService.updateStatus(id, req.user.sub, dto.status);
+    }
+    createScheduled(dto, req) {
+        return this.ridesService.createScheduledRide(req.user.sub, dto);
+    }
+    generateShare(id, req) {
+        return this.ridesService.generateShareToken(id, req.user.sub);
+    }
+    triggerPanic(dto, req) {
+        return this.ridesService.triggerPanic(req.user.sub, dto.rideId ?? null, dto.lat, dto.lng);
+    }
+    addFavorite(dto, req) {
+        return this.ridesService.addFavoriteDriver(req.user.sub, dto.driverId);
+    }
+    removeFavorite(dto, req) {
+        return this.ridesService.removeFavoriteDriver(req.user.sub, dto.driverId);
+    }
+    getFavorites(req) {
+        return this.ridesService.getFavoriteDrivers(req.user.sub);
+    }
+    trackByToken(token) {
+        return this.ridesService.getRideByShareToken(token);
+    }
+    cancelRide(id, req) {
+        return this.ridesService.cancelRide(id, req.user.sub, req.user.role);
+    }
+    rateRide(id, dto, req) {
+        return this.ridesService.rateRide(id, req.user.sub, req.user.role, dto.rating, dto.comment);
     }
 };
 exports.RidesController = RidesController;
 __decorate([
     (0, common_1.Post)(),
-    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
-    __param(0, (0, common_1.Request)()),
-    __param(1, (0, common_1.Body)()),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Request)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, create_ride_dto_1.CreateRideDto]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", void 0)
 ], RidesController.prototype, "create", null);
 __decorate([
     (0, common_1.Get)('history'),
-    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
     __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -58,7 +87,6 @@ __decorate([
 ], RidesController.prototype, "getHistory", null);
 __decorate([
     (0, common_1.Get)('driver/stats'),
-    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
     __param(0, (0, common_1.Request)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -66,13 +94,108 @@ __decorate([
 ], RidesController.prototype, "getDriverStats", null);
 __decorate([
     (0, common_1.Get)('active'),
-    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], RidesController.prototype, "getActiveCourses", null);
+__decorate([
+    (0, common_1.Post)('estimate'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "estimatePrice", null);
+__decorate([
+    (0, common_1.Post)(':id/accept'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "acceptRide", null);
+__decorate([
+    (0, common_1.Patch)(':id/status'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "updateStatus", null);
+__decorate([
+    (0, common_1.Post)('scheduled'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "createScheduled", null);
+__decorate([
+    (0, common_1.Post)(':id/share'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "generateShare", null);
+__decorate([
+    (0, common_1.Post)('panic'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "triggerPanic", null);
+__decorate([
+    (0, common_1.Post)('favorites/add'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "addFavorite", null);
+__decorate([
+    (0, common_1.Post)('favorites/remove'),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "removeFavorite", null);
+__decorate([
+    (0, common_1.Get)('favorites'),
+    __param(0, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "getFavorites", null);
+__decorate([
+    (0, common_1.Get)('track/:token'),
+    __param(0, (0, common_1.Param)('token')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "trackByToken", null);
+__decorate([
+    (0, common_1.Patch)(':id/cancel'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "cancelRide", null);
+__decorate([
+    (0, common_1.Post)(':id/rate'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, common_1.Request)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object, Object]),
+    __metadata("design:returntype", void 0)
+], RidesController.prototype, "rateRide", null);
 exports.RidesController = RidesController = __decorate([
     (0, common_1.Controller)('rides'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
     __metadata("design:paramtypes", [rides_service_1.RidesService])
 ], RidesController);
 //# sourceMappingURL=rides.controller.js.map

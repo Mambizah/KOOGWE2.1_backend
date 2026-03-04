@@ -9,19 +9,38 @@ export declare class AuthService {
     constructor(prisma: PrismaService, jwtService: JwtService, mailService: MailService);
     create(createAuthDto: CreateAuthDto): Promise<{
         message: string;
-        email: any;
+        email: string;
+        access_token: string;
+        user: {
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
+        };
     }>;
-    verifyEmail(email: string, code: string): Promise<{
+    verifyEmail(email: string, _code: string): Promise<{
+        message: string;
+        access_token: string;
+        user: {
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
+        };
+    }>;
+    resendOtp(_email: string): Promise<{
         message: string;
     }>;
     login(email: string, password: string): Promise<{
-        access_token: any;
+        access_token: string;
         user: {
-            id: any;
-            email: any;
-            name: any;
-            role: any;
-            accountStatus: any;
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
         };
     }>;
 }

@@ -14,4 +14,33 @@ export class MailService {
   async sendWelcomeEmail(email: string, name: string): Promise<void> {
     console.log(`📧 [EMAIL DÉSACTIVÉ] Bienvenue ${name} (${email})`);
   }
+
+  async sendRideValidationEmail(
+    email: string,
+    payload: { rideId: string; status: string; price: number; vehicleType: string },
+  ): Promise<void> {
+    console.log(
+      `📧 [EMAIL DÉSACTIVÉ] Validation course ${payload.rideId} (${payload.vehicleType}) ${payload.price}€ -> ${email}`,
+    );
+  }
+
+  async sendDriverAssignedEmail(
+    email: string,
+    payload: { rideId: string; driverName: string; driverPhone?: string },
+  ): Promise<void> {
+    console.log(
+      `📧 [EMAIL DÉSACTIVÉ] Chauffeur assigné course ${payload.rideId}: ${payload.driverName} (${payload.driverPhone ?? 'N/A'}) -> ${email}`,
+    );
+  }
+
+  async sendRideCancelledEmail(email: string, payload: { rideId: string }): Promise<void> {
+    console.log(`📧 [EMAIL DÉSACTIVÉ] Course annulée ${payload.rideId} -> ${email}`);
+  }
+
+  async sendRideCompletedEmail(
+    email: string,
+    payload: { rideId: string; price: number },
+  ): Promise<void> {
+    console.log(`📧 [EMAIL DÉSACTIVÉ] Course terminée ${payload.rideId}, reçu ${payload.price}€ -> ${email}`);
+  }
 }

@@ -24,6 +24,11 @@ export class WalletController {
     return this.walletService.payRideFromWallet(dto.userId, dto.rideId, dto.amount);
   }
 
+  @Post('record-cash')
+  async recordCashPayment(@Body() dto: { userId: string; rideId: string; amount: number }) {
+    return this.walletService.recordCashPayment(dto.userId, dto.rideId, dto.amount);
+  }
+
   @Post('request-withdrawal')
   async requestWithdrawal(@Body() dto: { userId: string; amount: number }) {
     return this.walletService.requestWithdrawal(dto.userId, dto.amount);

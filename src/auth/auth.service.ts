@@ -45,6 +45,11 @@ export class AuthService {
 
     console.log('✅ Nouveau compte créé:', newUser.email, '| Rôle:', newUser.role);
 
+    await this.mailService.sendVerificationCode(newUser.email, '000000');
+    if (newUser.name) {
+      await this.mailService.sendWelcomeEmail(newUser.email, newUser.name);
+    }
+
     // ✅ Token retourné directement — l'app navigue sans OTP
     const payload = { sub: newUser.id, email: newUser.email, role: newUser.role };
     const access_token = await this.jwtService.signAsync(payload);
@@ -64,7 +69,7 @@ export class AuthService {
   }
 
   // ---- VÉRIFICATION EMAIL (désactivée — retourne token sans vérifier code) ----
-  async verifyEmail(email: string, code: string) {
+  async verifyEmail(email: string, _code: string) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) throw new BadRequestException('Email introuvable');
 
@@ -83,7 +88,7 @@ export class AuthService {
   }
 
   // ---- RENVOI CODE OTP (désactivé) ----
-  async resendOtp(email: string) {
+  async resendOtp(_email: string) {
     return { message: 'Code renvoyé avec succès' };
   }
 

@@ -47,6 +47,7 @@ export class RidesGateway
           secret: this.configService.get<string>('JWT_SECRET'),
         });
         this.socketUserMap.set(client.id, payload.sub);
+        client.join(`user_${payload.sub}`);
         console.log(`🔌 Client connecté: ${client.id} (user: ${payload.sub})`);
       } else {
         console.log(`🔌 Client connecté sans auth: ${client.id}`);
@@ -76,19 +77,56 @@ export class RidesGateway
 
   // ---- Chauffeur en ligne / hors ligne ----
   @SubscribeMessage('driver_online')
-  handleDriverOnline(@ConnectedSocket() client: Socket, @MessageBody() data: { driverId: string }) {
+  async handleDriverOnline(@ConnectedSocket() client: Socket, @MessageBody() data: { driverId: string }) {
     const authenticatedUserId = this.socketUserMap.get(client.id);
     if (authenticatedUserId && authenticatedUserId !== data.driverId) {
       console.warn(`⚠️ Tentative d'usurpation: ${client.id}`);
       return;
     }
+
+    const driver = await this.prisma.user.findUnique({
+      where: { id: data.driverId },
+      include: { driverProfile: true },
+    });
+
+    const hasVehicleInfo = Boolean(
+      driver?.driverProfile?.vehicleMake
+      && driver?.driverProfile?.vehicleModel
+      && driver?.driverProfile?.licensePlate,
+    );
+
+    const canGoOnline = Boolean(
+      driver
+      && driver.role === 'DRIVER'
+      && driver.driverProfile
+      && driver.driverProfile.faceVerified
+      && driver.driverProfile.documentsUploaded
+      && driver.driverProfile.adminApproved
+      && hasVehicleInfo,
+    );
+
+    if (!canGoOnline) {
+      this.server.to(client.id).emit('driver_restricted', {
+        reason: 'Compte chauffeur incomplet: vérification, documents, véhicule et validation admin requis',
+      });
+      return;
+    }
+
+    await this.prisma.driverProfile.update({
+      where: { userId: data.driverId },
+      data: { isOnline: true },
+    });
+
     client.join('drivers_online');
     console.log(`🟢 Chauffeur ${data.driverId} en ligne`);
   }
 
   @SubscribeMessage('driver_offline')
-  handleDriverOffline(@ConnectedSocket() client: Socket, @MessageBody() data: { driverId: string }) {
+  async handleDriverOffline(@ConnectedSocket() client: Socket, @MessageBody() data: { driverId: string }) {
     client.leave('drivers_online');
+    await this.prisma.driverProfile
+      .update({ where: { userId: data.driverId }, data: { isOnline: false } })
+      .catch(() => undefined);
     console.log(`🔴 Chauffeur ${data.driverId} hors ligne`);
   }
 
@@ -96,6 +134,14 @@ export class RidesGateway
   notifyDrivers(rideData: any) {
     this.server.to('drivers_online').emit('new_ride', rideData);
     console.log(`📢 Nouvelle course ${rideData.id} envoyée aux chauffeurs`);
+  }
+
+  notifyPassenger(passengerId: string, event: string, payload: any) {
+    this.server.to(`user_${passengerId}`).emit(event, payload);
+  }
+
+  notifyRideRoom(rideId: string, event: string, payload: any) {
+    this.server.to(`ride_${rideId}`).emit(event, payload);
   }
 
   // ---- Accepter une course (SÉCURISÉ) ----
@@ -116,6 +162,26 @@ export class RidesGateway
         include: { driverProfile: true },
       });
       if (!driver) return;
+
+      const hasVehicleInfo = Boolean(
+        driver.driverProfile?.vehicleMake
+        && driver.driverProfile?.vehicleModel
+        && driver.driverProfile?.licensePlate,
+      );
+      const canAccept = Boolean(
+        driver.role === 'DRIVER'
+        && driver.driverProfile
+        && driver.driverProfile.faceVerified
+        && driver.driverProfile.documentsUploaded
+        && driver.driverProfile.adminApproved
+        && hasVehicleInfo,
+      );
+      if (!canAccept) {
+        this.server.to(client.id).emit('driver_restricted', {
+          reason: 'Compte chauffeur incomplet: vérification, documents, véhicule et validation admin requis',
+        });
+        return;
+      }
 
       const ride = await this.prisma.ride.findUnique({ where: { id: data.rideId } });
       if (!ride || ride.status !== RideStatus.REQUESTED) {
