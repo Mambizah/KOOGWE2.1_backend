@@ -94,7 +94,8 @@ export class AuthService {
 
   // ---- CONNEXION ----
   async login(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
 
     if (!user) throw new UnauthorizedException('Email incorrect');
     if (!user.isVerified)

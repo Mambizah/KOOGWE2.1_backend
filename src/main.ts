@@ -41,9 +41,16 @@ async function bootstrap() {
     'http://10.0.2.2:3000',
   ];
 
-  // Ajouter l'URL Railway si définie dans .env
+  // Ajouter les URLs frontend définies dans .env
   if (process.env.FRONTEND_URL) {
     allowedOrigins.push(process.env.FRONTEND_URL);
+  }
+  if (process.env.FRONTEND_URLS) {
+    const urls = process.env.FRONTEND_URLS
+      .split(',')
+      .map((url) => url.trim())
+      .filter(Boolean);
+    allowedOrigins.push(...urls);
   }
 
   app.enableCors({
@@ -55,9 +62,9 @@ async function bootstrap() {
       if (!origin) return callback(null, true);
       // Origins web connues → accepter
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      // En prod, on peut logger les origines inconnues
-      console.warn(`⚠️ CORS bloqué pour origin: ${origin}`);
-      callback(null, true); // Accepter quand même pour ne pas bloquer les tests
+      // Log d'observabilité: origine non listée, mais temporairement acceptée
+      console.warn(`⚠️ CORS origine non listée (acceptée): ${origin}`);
+      callback(null, true); // Accepter pour éviter les blocages web/mobile
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
