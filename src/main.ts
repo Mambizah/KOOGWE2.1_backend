@@ -4,6 +4,7 @@ dotenv.config();
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { PrismaService } from './prisma.service';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -62,6 +63,37 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
+
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (adminEmail && adminPassword) {
+    const prisma = app.get(PrismaService);
+    const bcrypt = await import('bcrypt');
+    const hashedPassword = await bcrypt.hash(adminPassword, 12);
+
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: {
+        password: hashedPassword,
+        role: 'ADMIN',
+        isVerified: true,
+        accountStatus: 'ACTIVE',
+      },
+      create: {
+        email: adminEmail,
+        password: hashedPassword,
+        role: 'ADMIN',
+        isVerified: true,
+        accountStatus: 'ACTIVE',
+        wallet: { create: {} },
+      },
+    });
+
+    console.log(`✅ Compte admin prêt: ${adminEmail}`);
+  } else {
+    console.log('ℹ️ ADMIN_EMAIL/ADMIN_PASSWORD non définis: bootstrap admin ignoré');
+  }
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');

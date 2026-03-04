@@ -26,6 +26,9 @@ let AuthController = class AuthController {
     login(body) {
         return this.authService.login(body.email, body.password);
     }
+    adminLogin(body) {
+        return this.authService.adminLogin(body.email, body.password);
+    }
     verify(body) {
         return this.authService.verifyEmail(body.email, body.code);
     }
@@ -45,6 +48,13 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)('admin-login'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "adminLogin", null);
 __decorate([
     (0, common_1.Post)('verify'),
     __param(0, (0, common_1.Body)()),

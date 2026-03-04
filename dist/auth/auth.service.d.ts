@@ -43,4 +43,14 @@ export declare class AuthService {
             accountStatus: import(".prisma/client").$Enums.AccountStatus;
         };
     }>;
+    adminLogin(email: string, password: string): Promise<{
+        access_token: string;
+        user: {
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
+        };
+    }>;
 }

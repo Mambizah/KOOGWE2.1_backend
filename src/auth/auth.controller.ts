@@ -16,6 +16,11 @@ export class AuthController {
     return this.authService.login(body.email, body.password);
   }
 
+  @Post('admin-login')
+  adminLogin(@Body() body: { email: string; password: string }) {
+    return this.authService.adminLogin(body.email, body.password);
+  }
+
   @Post('verify')
   verify(@Body() body: { email: string; code: string }) {
     return this.authService.verifyEmail(body.email, body.code);

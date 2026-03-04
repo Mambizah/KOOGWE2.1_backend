@@ -5,6 +5,7 @@ dotenv.config();
 const core_1 = require("@nestjs/core");
 const common_1 = require("@nestjs/common");
 const app_module_1 = require("./app.module");
+const prisma_service_1 = require("./prisma.service");
 const fs_1 = require("fs");
 const path_1 = require("path");
 async function bootstrap() {
@@ -46,6 +47,34 @@ async function bootstrap() {
         allowedHeaders: ['Content-Type', 'Authorization'],
         credentials: true,
     });
+    const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (adminEmail && adminPassword) {
+        const prisma = app.get(prisma_service_1.PrismaService);
+        const bcrypt = await Promise.resolve().then(() => require('bcrypt'));
+        const hashedPassword = await bcrypt.hash(adminPassword, 12);
+        await prisma.user.upsert({
+            where: { email: adminEmail },
+            update: {
+                password: hashedPassword,
+                role: 'ADMIN',
+                isVerified: true,
+                accountStatus: 'ACTIVE',
+            },
+            create: {
+                email: adminEmail,
+                password: hashedPassword,
+                role: 'ADMIN',
+                isVerified: true,
+                accountStatus: 'ACTIVE',
+                wallet: { create: {} },
+            },
+        });
+        console.log(`✅ Compte admin prêt: ${adminEmail}`);
+    }
+    else {
+        console.log('ℹ️ ADMIN_EMAIL/ADMIN_PASSWORD non définis: bootstrap admin ignoré');
+    }
     const port = process.env.PORT || 3000;
     await app.listen(port, '0.0.0.0');
     console.log(`🚀 Koogwe Backend démarré sur le port ${port}`);

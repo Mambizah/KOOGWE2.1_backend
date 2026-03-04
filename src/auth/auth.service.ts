@@ -120,4 +120,12 @@ export class AuthService {
       },
     };
   }
+
+  async adminLogin(email: string, password: string) {
+    const response = await this.login(email, password);
+    if (response.user.role !== 'ADMIN') {
+      throw new UnauthorizedException('Accès réservé aux administrateurs');
+    }
+    return response;
+  }
 }

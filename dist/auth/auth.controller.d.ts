@@ -28,6 +28,19 @@ export declare class AuthController {
             accountStatus: import(".prisma/client").$Enums.AccountStatus;
         };
     }>;
+    adminLogin(body: {
+        email: string;
+        password: string;
+    }): Promise<{
+        access_token: string;
+        user: {
+            id: string;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+            accountStatus: import(".prisma/client").$Enums.AccountStatus;
+        };
+    }>;
     verify(body: {
         email: string;
         code: string;

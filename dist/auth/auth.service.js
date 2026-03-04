@@ -107,6 +107,13 @@ let AuthService = class AuthService {
             },
         };
     }
+    async adminLogin(email, password) {
+        const response = await this.login(email, password);
+        if (response.user.role !== 'ADMIN') {
+            throw new common_1.UnauthorizedException('Accès réservé aux administrateurs');
+        }
+        return response;
+    }
 };
 exports.AuthService = AuthService;
 exports.AuthService = AuthService = __decorate([
