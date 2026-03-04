@@ -8,6 +8,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FaceVerificationModule = void 0;
 const common_1 = require("@nestjs/common");
+const jwt_1 = require("@nestjs/jwt");
+const config_1 = require("@nestjs/config");
 const face_verification_controller_1 = require("./face-verification.controller");
 const face_verification_service_1 = require("./face-verification.service");
 const aws_rekognition_service_1 = require("./aws-rekognition.service");
@@ -17,6 +19,16 @@ let FaceVerificationModule = class FaceVerificationModule {
 exports.FaceVerificationModule = FaceVerificationModule;
 exports.FaceVerificationModule = FaceVerificationModule = __decorate([
     (0, common_1.Module)({
+        imports: [
+            jwt_1.JwtModule.registerAsync({
+                imports: [config_1.ConfigModule],
+                inject: [config_1.ConfigService],
+                useFactory: (configService) => ({
+                    secret: configService.get('JWT_SECRET'),
+                    signOptions: { expiresIn: configService.get('JWT_EXPIRES_IN', '1d') },
+                }),
+            }),
+        ],
         controllers: [face_verification_controller_1.FaceVerificationController],
         providers: [face_verification_service_1.FaceVerificationService, aws_rekognition_service_1.AWSRekognitionService, prisma_service_1.PrismaService],
         exports: [face_verification_service_1.FaceVerificationService],
