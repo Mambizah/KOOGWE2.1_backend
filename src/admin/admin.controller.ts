@@ -32,6 +32,26 @@ export class AdminController {
     return this.adminService.getPendingDrivers();
   }
 
+  @Get('drivers')
+  async getDrivers(
+    @Request() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    this.assertAdmin(req);
+    return this.adminService.getDrivers(Number(page || 1), Number(limit || 50));
+  }
+
+  @Get('passengers')
+  async getPassengers(
+    @Request() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    this.assertAdmin(req);
+    return this.adminService.getPassengers(Number(page || 1), Number(limit || 50));
+  }
+
   @Get('documents/pending')
   async getPendingDocuments(@Request() req: any) {
     this.assertAdmin(req);
@@ -200,6 +220,28 @@ export class AdminController {
   async getActivePanics(@Request() req: any) {
     this.assertAdmin(req);
     return this.adminService.getActivePanics();
+  }
+
+  @Get('finance/transactions')
+  async getFinanceTransactions(
+    @Request() req: any,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    this.assertAdmin(req);
+    return this.adminService.getFinanceTransactions(Number(page || 1), Number(limit || 20));
+  }
+
+  @Get('finance/stats')
+  async getFinanceStats(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getFinanceStats();
+  }
+
+  @Get('finance/chart')
+  async getFinanceChart(@Request() req: any, @Query('period') period?: string) {
+    this.assertAdmin(req);
+    return this.adminService.getFinanceChart(period || 'weekly');
   }
 
   @Get('ws')

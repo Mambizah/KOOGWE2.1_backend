@@ -310,6 +310,169 @@ export class AdminService {
     }));
   }
 
+  async getDrivers(page = 1, limit = 50) {
+    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 50;
+    const skip = (safePage - 1) * safeLimit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { role: Role.DRIVER },
+        include: {
+          driverProfile: true,
+          documents: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.user.count({ where: { role: Role.DRIVER } }),
+    ]);
+
+    return {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      items: items.map((driver) => ({
+        id: driver.id,
+        name: driver.name,
+        email: driver.email,
+        phone: driver.phone,
+        role: driver.role,
+        accountStatus: driver.accountStatus,
+        createdAt: driver.createdAt,
+        lastLoginAt: driver.lastLoginAt,
+        driverProfile: driver.driverProfile,
+        documentsSummary: {
+          total: driver.documents.length,
+          pending: driver.documents.filter((doc) => doc.status === DocumentStatus.PENDING).length,
+          approved: driver.documents.filter((doc) => doc.status === DocumentStatus.APPROVED).length,
+          rejected: driver.documents.filter((doc) => doc.status === DocumentStatus.REJECTED).length,
+        },
+      })),
+    };
+  }
+
+  async getPassengers(page = 1, limit = 50) {
+    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 50;
+    const skip = (safePage - 1) * safeLimit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { role: Role.PASSENGER },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          accountStatus: true,
+          createdAt: true,
+          lastLoginAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.user.count({ where: { role: Role.PASSENGER } }),
+    ]);
+
+    return {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      items,
+    };
+  }
+
+  async getFinanceTransactions(page = 1, limit = 20) {
+    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 20;
+    const skip = (safePage - 1) * safeLimit;
+
+    const [items, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: safeLimit,
+      }),
+      this.prisma.transaction.count(),
+    ]);
+
+    return {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      items,
+    };
+  }
+
+  async getFinanceStats() {
+    const [
+      transactionsTotal,
+      recharges,
+      payments,
+      withdrawals,
+      pendingWithdrawals,
+    ] = await Promise.all([
+      this.prisma.transaction.count(),
+      this.prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'RECHARGE', status: 'COMPLETED' },
+      }),
+      this.prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'PAYMENT', status: 'COMPLETED' },
+      }),
+      this.prisma.transaction.aggregate({
+        _sum: { amount: true },
+        where: { type: 'WITHDRAWAL' },
+      }),
+      this.prisma.transaction.count({ where: { type: 'WITHDRAWAL', status: 'PENDING' } }),
+    ]);
+
+    return {
+      transactionsTotal,
+      rechargeAmount: recharges._sum.amount ?? 0,
+      paymentAmount: Math.abs(payments._sum.amount ?? 0),
+      withdrawalAmount: Math.abs(withdrawals._sum.amount ?? 0),
+      pendingWithdrawals,
+    };
+  }
+
+  async getFinanceChart(period = 'weekly') {
+    const now = new Date();
+    const days = period === 'monthly' ? 30 : period === 'daily' ? 1 : 7;
+    const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: { createdAt: { gte: since } },
+      select: { createdAt: true, amount: true, type: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      period,
+      since,
+      points: transactions.map((tx) => ({
+        at: tx.createdAt,
+        amount: tx.amount,
+        type: tx.type,
+      })),
+    };
+  }
+
   async getDocumentDetails(documentId: string) {
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
