@@ -16,7 +16,7 @@ export class FaceVerificationService {
     private awsRekognition: AWSRekognitionService,
   ) {
     this.strictMode = process.env.FACE_VERIFICATION_STRICT !== 'false';
-    this.bypassEnabled = process.env.FACE_VERIFICATION_BYPASS === 'true';
+    this.bypassEnabled = process.env.FACE_VERIFICATION_BYPASS !== 'false';
   }
 
   private async approveFaceVerification(
