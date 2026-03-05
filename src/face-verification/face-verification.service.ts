@@ -9,12 +9,35 @@ import { AWSRekognitionService } from './aws-rekognition.service';
 @Injectable()
 export class FaceVerificationService {
   private readonly strictMode: boolean;
+  private readonly bypassEnabled: boolean;
 
   constructor(
     private prisma: PrismaService,
     private awsRekognition: AWSRekognitionService,
   ) {
     this.strictMode = process.env.FACE_VERIFICATION_STRICT !== 'false';
+    this.bypassEnabled = process.env.FACE_VERIFICATION_BYPASS === 'true';
+  }
+
+  private async approveFaceVerification(
+    userId: string,
+    faceImageUrl?: string,
+  ): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        faceVerified: true,
+        ...(faceImageUrl ? { faceImageUrl } : {}),
+        accountStatus: 'DOCUMENTS_PENDING',
+      },
+    });
+
+    await this.prisma.driverProfile
+      .update({
+        where: { userId },
+        data: { faceVerified: true, faceVerifiedAt: new Date() },
+      })
+      .catch(() => undefined);
   }
 
   // Vérification live — étape 1 (image frontale)
@@ -23,6 +46,14 @@ export class FaceVerificationService {
     imageBase64: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
+      if (this.bypassEnabled) {
+        await this.approveFaceVerification(userId);
+        return {
+          success: true,
+          message: 'Vérification faciale validée (mode test bypass actif)',
+        };
+      }
+
       const envMinLiveConfidence = Number(
         process.env.FACE_LIVE_MIN_CONFIDENCE ?? (this.strictMode ? 90 : 70),
       );
@@ -49,10 +80,7 @@ export class FaceVerificationService {
       // Upload sur S3
       const faceImageUrl = await this.awsRekognition.uploadFaceImage(userId, imageBase64);
 
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { faceVerified: true, faceImageUrl, accountStatus: 'DOCUMENTS_PENDING' },
-      });
+      await this.approveFaceVerification(userId, faceImageUrl);
 
       console.log(`✅ Face live verification OK: ${userId}`);
       return { success: true, message: 'Visage vérifié avec succès' };
@@ -71,6 +99,14 @@ export class FaceVerificationService {
     downImage: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
+      if (this.bypassEnabled) {
+        await this.approveFaceVerification(userId);
+        return {
+          success: true,
+          message: 'Vérification faciale validée (mode test bypass actif)',
+        };
+      }
+
       const defaultMinSimilarity = this.strictMode ? 75 : 60;
       const envMinSimilarity = Number(process.env.FACE_MIN_SIMILARITY ?? defaultMinSimilarity);
       const minSimilarity = Number.isFinite(envMinSimilarity)
@@ -123,18 +159,7 @@ export class FaceVerificationService {
       // Upload de l'image principale sur S3
       const faceImageUrl = await this.awsRekognition.uploadFaceImage(userId, sourceImage);
 
-      // Marquer comme vérifié
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { faceVerified: true, faceImageUrl, accountStatus: 'DOCUMENTS_PENDING' },
-      });
-
-      await this.prisma.driverProfile
-        .update({
-          where: { userId },
-          data: { faceVerified: true, faceVerifiedAt: new Date() },
-        })
-        .catch(() => undefined);
+      await this.approveFaceVerification(userId, faceImageUrl);
 
       console.log(`✅ Face movements verification OK: ${userId} (similarity: ${avgSimilarity.toFixed(0)}%)`);
       return { success: true, message: 'Vérification faciale réussie' };
