@@ -98,7 +98,8 @@ async function bootstrap() {
       callback(null, true); // Accepter pour éviter les blocages web/mobile
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
+    exposedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 

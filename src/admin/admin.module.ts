@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController } from './admin.controller';
+import { AdminGateway } from './admin.gateway';
 import { AdminService } from './admin.service';
 import { PrismaService } from '../prisma.service';
 
@@ -17,7 +18,7 @@ import { PrismaService } from '../prisma.service';
     }),
   ],
   controllers: [AdminController],
-  providers: [AdminService, PrismaService],
+  providers: [AdminService, AdminGateway, PrismaService],
   exports: [AdminService],
 })
 export class AdminModule {}

@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { DocumentStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminService } from './admin.service';
@@ -39,15 +39,21 @@ export class AdminController {
   }
 
   @Get('documents')
-  async getPendingDocumentsFlat(@Request() req: any) {
+  async getPendingDocumentsFlat(
+    @Request() req: any,
+    @Query('status') status?: string,
+  ) {
     this.assertAdmin(req);
-    return this.adminService.getPendingDocuments();
+    return this.adminService.getDocumentsByStatus(status);
   }
 
   @Get('documents/list')
-  async getPendingDocumentsList(@Request() req: any) {
+  async getPendingDocumentsList(
+    @Request() req: any,
+    @Query('status') status?: string,
+  ) {
     this.assertAdmin(req);
-    const documents = await this.adminService.getPendingDocuments();
+    const documents = await this.adminService.getDocumentsByStatus(status);
     return { documents, total: documents.length };
   }
 
@@ -133,6 +139,31 @@ export class AdminController {
     });
   }
 
+  @Patch('documents/:documentId/approve')
+  async approveDocumentPatch(@Request() req: any, @Param('documentId') documentId: string) {
+    this.assertAdmin(req);
+    return this.adminService.reviewDocument({
+      documentId,
+      adminId: req.user.sub,
+      status: 'APPROVED',
+    });
+  }
+
+  @Patch('documents/:documentId/reject')
+  async rejectDocumentPatch(
+    @Request() req: any,
+    @Param('documentId') documentId: string,
+    @Body() body: { rejectionReason?: string },
+  ) {
+    this.assertAdmin(req);
+    return this.adminService.reviewDocument({
+      documentId,
+      adminId: req.user.sub,
+      status: 'REJECTED',
+      rejectionReason: body.rejectionReason,
+    });
+  }
+
   @Patch('drivers/:driverId/approval')
   async setDriverApproval(
     @Request() req: any,
@@ -163,5 +194,16 @@ export class AdminController {
   async getLoginActivityAlias(@Request() req: any) {
     this.assertAdmin(req);
     return this.adminService.getLoginActivity();
+  }
+
+  @Get('panics/active')
+  async getActivePanics(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getActivePanics();
+  }
+
+  @Get('ws')
+  async wsHealth() {
+    return { ok: true, message: 'Admin WS endpoint is available' };
   }
 }

@@ -69,6 +69,15 @@ export class AdminService {
     };
   }
 
+  private toDocumentFilterStatus(status?: string): DocumentStatus | undefined {
+    const normalized = (status || '').trim().toUpperCase();
+    if (!normalized) return undefined;
+    if (normalized === 'PENDING') return DocumentStatus.PENDING;
+    if (normalized === 'APPROVED') return DocumentStatus.APPROVED;
+    if (normalized === 'REJECTED') return DocumentStatus.REJECTED;
+    return undefined;
+  }
+
   async getDashboardSummary() {
     const [
       pendingDocuments,
@@ -240,6 +249,65 @@ export class AdminService {
     });
 
     return documents.map((doc) => this.mapDocumentForAdmin(doc));
+  }
+
+  async getDocumentsByStatus(status?: string) {
+    const filterStatus = this.toDocumentFilterStatus(status);
+
+    if (filterStatus === DocumentStatus.APPROVED) {
+      return this.getApprovedDocuments();
+    }
+
+    if (filterStatus === DocumentStatus.REJECTED) {
+      const documents = await this.prisma.document.findMany({
+        where: { status: DocumentStatus.REJECTED },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              phone: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: { reviewedAt: 'desc' },
+        take: 300,
+      });
+
+      return documents.map((doc) => this.mapDocumentForAdmin(doc));
+    }
+
+    return this.getPendingDocuments();
+  }
+
+  async getActivePanics() {
+    const panics = await this.prisma.notification.findMany({
+      where: { type: 'PANIC' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return panics.map((panic) => ({
+      id: panic.id,
+      title: panic.title,
+      body: panic.body,
+      isRead: panic.isRead,
+      createdAt: panic.createdAt,
+      user: panic.user,
+    }));
   }
 
   async getDocumentDetails(documentId: string) {
