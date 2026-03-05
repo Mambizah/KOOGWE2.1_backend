@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post, Request, UseGuards } from '@nestjs/common';
 import { DocumentStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminService } from './admin.service';
@@ -80,13 +80,55 @@ export class AdminController {
   async reviewDocument(
     @Request() req: any,
     @Param('documentId') documentId: string,
-    @Body() body: { status: DocumentStatus; rejectionReason?: string },
+    @Body() body: { status?: DocumentStatus | string; approved?: boolean; rejectionReason?: string },
   ) {
     this.assertAdmin(req);
     return this.adminService.reviewDocument({
       documentId,
       adminId: req.user.sub,
       status: body.status,
+      approved: body.approved,
+      rejectionReason: body.rejectionReason,
+    });
+  }
+
+  @Post('documents/:documentId/review')
+  async reviewDocumentPost(
+    @Request() req: any,
+    @Param('documentId') documentId: string,
+    @Body() body: { status?: DocumentStatus | string; approved?: boolean; rejectionReason?: string },
+  ) {
+    this.assertAdmin(req);
+    return this.adminService.reviewDocument({
+      documentId,
+      adminId: req.user.sub,
+      status: body.status,
+      approved: body.approved,
+      rejectionReason: body.rejectionReason,
+    });
+  }
+
+  @Post('documents/:documentId/approve')
+  async approveDocument(@Request() req: any, @Param('documentId') documentId: string) {
+    this.assertAdmin(req);
+    return this.adminService.reviewDocument({
+      documentId,
+      adminId: req.user.sub,
+      status: 'APPROVED',
+    });
+  }
+
+  @Post('documents/:documentId/reject')
+  async rejectDocument(
+    @Request() req: any,
+    @Param('documentId') documentId: string,
+    @Body() body: { rejectionReason?: string },
+  ) {
+    this.assertAdmin(req);
+    return this.adminService.reviewDocument({
+      documentId,
+      adminId: req.user.sub,
+      status: 'REJECTED',
       rejectionReason: body.rejectionReason,
     });
   }

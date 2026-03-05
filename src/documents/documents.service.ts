@@ -52,6 +52,35 @@ export class DocumentsService {
     };
   }
 
+  private mapDocumentForAdmin<T extends { fileUrl: string; user?: any }>(document: T) {
+    const resolved = this.mapDocumentWithResolvedUrl(document);
+    const uploaderName = resolved.user?.name || resolved.user?.email || resolved.user?.phone || resolved.user?.id;
+
+    return {
+      ...resolved,
+      uploaderId: resolved.user?.id ?? null,
+      uploaderName,
+      uploaderEmail: resolved.user?.email ?? null,
+      uploaderPhone: resolved.user?.phone ?? null,
+    };
+  }
+
+  private toDocumentStatus(inputStatus?: string, approved?: boolean): DocumentStatus {
+    if (typeof approved === 'boolean') {
+      return approved ? DocumentStatus.APPROVED : DocumentStatus.REJECTED;
+    }
+
+    const normalized = (inputStatus || '').trim().toUpperCase();
+    if (normalized === 'APPROVED' || normalized === 'APPROVE' || normalized === 'VALIDATED') {
+      return DocumentStatus.APPROVED;
+    }
+    if (normalized === 'REJECTED' || normalized === 'REJECT' || normalized === 'REFUSED') {
+      return DocumentStatus.REJECTED;
+    }
+
+    throw new BadRequestException('Le status doit être APPROVED ou REJECTED');
+  }
+
   private hasRequiredVehicleInfo(profile: {
     vehicleMake: string | null;
     vehicleModel: string | null;
@@ -164,7 +193,7 @@ export class DocumentsService {
       orderBy: { uploadedAt: 'asc' },
     });
 
-    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
+    return documents.map((doc) => this.mapDocumentForAdmin(doc));
   }
 
   async listApprovedDocuments() {
@@ -192,7 +221,7 @@ export class DocumentsService {
       take: 300,
     });
 
-    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
+    return documents.map((doc) => this.mapDocumentForAdmin(doc));
   }
 
   async listPendingDrivers() {
@@ -236,11 +265,12 @@ export class DocumentsService {
   async reviewDocument(params: {
     documentId: string;
     adminId: string;
-    status: 'APPROVED' | 'REJECTED';
+    status?: string;
+    approved?: boolean;
     rejectionReason?: string;
   }) {
-    const { documentId, adminId, status, rejectionReason } = params;
-    const targetStatus = status === 'APPROVED' ? DocumentStatus.APPROVED : DocumentStatus.REJECTED;
+    const { documentId, adminId, status, approved, rejectionReason } = params;
+    const targetStatus = this.toDocumentStatus(status, approved);
 
     const document = await this.prisma.document.findUnique({ where: { id: documentId } });
     if (!document) throw new NotFoundException('Document introuvable');

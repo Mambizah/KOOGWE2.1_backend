@@ -68,13 +68,55 @@ export class DocumentsController {
   reviewDocument(
     @Request() req: any,
     @Param('id') id: string,
-    @Body() body: { status: 'APPROVED' | 'REJECTED'; rejectionReason?: string },
+    @Body() body: { status?: string; approved?: boolean; rejectionReason?: string },
   ) {
     this.assertAdmin(req);
     return this.documentsService.reviewDocument({
       documentId: id,
       adminId: req.user.sub,
       status: body.status,
+      approved: body.approved,
+      rejectionReason: body.rejectionReason,
+    });
+  }
+
+  @Post('admin/:id/review')
+  reviewDocumentPost(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { status?: string; approved?: boolean; rejectionReason?: string },
+  ) {
+    this.assertAdmin(req);
+    return this.documentsService.reviewDocument({
+      documentId: id,
+      adminId: req.user.sub,
+      status: body.status,
+      approved: body.approved,
+      rejectionReason: body.rejectionReason,
+    });
+  }
+
+  @Post('admin/:id/approve')
+  approveDocument(@Request() req: any, @Param('id') id: string) {
+    this.assertAdmin(req);
+    return this.documentsService.reviewDocument({
+      documentId: id,
+      adminId: req.user.sub,
+      status: 'APPROVED',
+    });
+  }
+
+  @Post('admin/:id/reject')
+  rejectDocument(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { rejectionReason?: string },
+  ) {
+    this.assertAdmin(req);
+    return this.documentsService.reviewDocument({
+      documentId: id,
+      adminId: req.user.sub,
+      status: 'REJECTED',
       rejectionReason: body.rejectionReason,
     });
   }

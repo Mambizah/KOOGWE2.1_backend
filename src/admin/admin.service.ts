@@ -40,6 +40,35 @@ export class AdminService {
     };
   }
 
+  private toDocumentStatus(inputStatus?: string, approved?: boolean): DocumentStatus {
+    if (typeof approved === 'boolean') {
+      return approved ? DocumentStatus.APPROVED : DocumentStatus.REJECTED;
+    }
+
+    const normalized = (inputStatus || '').trim().toUpperCase();
+    if (normalized === 'APPROVED' || normalized === 'APPROVE' || normalized === 'VALIDATED') {
+      return DocumentStatus.APPROVED;
+    }
+    if (normalized === 'REJECTED' || normalized === 'REJECT' || normalized === 'REFUSED') {
+      return DocumentStatus.REJECTED;
+    }
+
+    throw new BadRequestException('Le status doit être APPROVED ou REJECTED');
+  }
+
+  private mapDocumentForAdmin<T extends { fileUrl: string; user?: any }>(document: T) {
+    const resolved = this.mapDocumentWithResolvedUrl(document);
+    const uploaderName = resolved.user?.name || resolved.user?.email || resolved.user?.phone || resolved.user?.id;
+
+    return {
+      ...resolved,
+      uploaderId: resolved.user?.id ?? null,
+      uploaderName,
+      uploaderEmail: resolved.user?.email ?? null,
+      uploaderPhone: resolved.user?.phone ?? null,
+    };
+  }
+
   async getDashboardSummary() {
     const [
       pendingDocuments,
@@ -189,7 +218,7 @@ export class AdminService {
       orderBy: { uploadedAt: 'asc' },
     });
 
-    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
+    return documents.map((doc) => this.mapDocumentForAdmin(doc));
   }
 
   async getApprovedDocuments() {
@@ -210,7 +239,7 @@ export class AdminService {
       take: 300,
     });
 
-    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
+    return documents.map((doc) => this.mapDocumentForAdmin(doc));
   }
 
   async getDocumentDetails(documentId: string) {
@@ -233,20 +262,18 @@ export class AdminService {
 
     if (!document) throw new NotFoundException('Document introuvable');
 
-    return this.mapDocumentWithResolvedUrl(document);
+    return this.mapDocumentForAdmin(document);
   }
 
   async reviewDocument(params: {
     documentId: string;
     adminId: string;
-    status: DocumentStatus;
+    status?: string;
+    approved?: boolean;
     rejectionReason?: string;
   }) {
-    const { documentId, adminId, status, rejectionReason } = params;
-
-    if (status !== DocumentStatus.APPROVED && status !== DocumentStatus.REJECTED) {
-      throw new BadRequestException('Le status doit être APPROVED ou REJECTED');
-    }
+    const { documentId, adminId, status, approved, rejectionReason } = params;
+    const targetStatus = this.toDocumentStatus(status, approved);
 
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
@@ -258,17 +285,17 @@ export class AdminService {
     const updated = await this.prisma.document.update({
       where: { id: documentId },
       data: {
-        status,
+        status: targetStatus,
         reviewedAt: new Date(),
         reviewedBy: adminId,
-        rejectionReason: status === DocumentStatus.REJECTED ? rejectionReason ?? 'Document non conforme' : null,
+        rejectionReason: targetStatus === DocumentStatus.REJECTED ? rejectionReason ?? 'Document non conforme' : null,
       },
       include: {
         user: { select: { id: true, name: true, email: true, role: true } },
       },
     });
 
-    if (status === DocumentStatus.REJECTED) {
+    if (targetStatus === DocumentStatus.REJECTED) {
       await this.prisma.user.update({
         where: { id: document.userId },
         data: { accountStatus: AccountStatus.REJECTED },
@@ -291,7 +318,7 @@ export class AdminService {
 
     return {
       ...this.mapDocumentWithResolvedUrl(updated),
-      message: status === DocumentStatus.APPROVED ? 'Document approuvé' : 'Document rejeté',
+      message: targetStatus === DocumentStatus.APPROVED ? 'Document approuvé' : 'Document rejeté',
       stats: {
         pending: pendingCount,
         approved: approvedCount,
