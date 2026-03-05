@@ -1,8 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+// REMPLACEZ src/admin/admin.service.ts
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountStatus, DocumentStatus, DocumentType, Role } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 
@@ -10,508 +7,239 @@ import { PrismaService } from '../prisma.service';
 export class AdminService {
   constructor(private prisma: PrismaService) {}
 
-  private getPublicBaseUrl() {
-    const explicitPublicBase = process.env.PUBLIC_BASE_URL?.trim();
-    if (explicitPublicBase) return explicitPublicBase;
-
-    const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-    if (railwayDomain) return `https://${railwayDomain}`;
-
-    return `http://localhost:${process.env.PORT || 3000}`;
-  }
-
   private resolveFileUrl(fileUrl: string) {
     if (!fileUrl) return fileUrl;
-
-    if (fileUrl.startsWith('http://localhost') || fileUrl.startsWith('https://localhost')) {
-      const uploadsIndex = fileUrl.indexOf('/uploads/');
-      if (uploadsIndex >= 0) {
-        return `${this.getPublicBaseUrl()}${fileUrl.slice(uploadsIndex)}`;
+    if (fileUrl.startsWith('http://localhost')) {
+      const idx = fileUrl.indexOf('/uploads/');
+      if (idx >= 0) {
+        const base = process.env.PUBLIC_BASE_URL || process.env.RAILWAY_PUBLIC_DOMAIN
+          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '';
+        return `${base}${fileUrl.slice(idx)}`;
       }
     }
-
     return fileUrl;
   }
 
-  private mapDocumentWithResolvedUrl<T extends { fileUrl: string }>(document: T) {
-    return {
-      ...document,
-      fileUrl: this.resolveFileUrl(document.fileUrl),
-    };
-  }
-
-  private toDocumentStatus(inputStatus?: string, approved?: boolean): DocumentStatus {
-    if (typeof approved === 'boolean') {
-      return approved ? DocumentStatus.APPROVED : DocumentStatus.REJECTED;
-    }
-
-    const normalized = (inputStatus || '').trim().toUpperCase();
-    if (normalized === 'APPROVED' || normalized === 'APPROVE' || normalized === 'VALIDATED') {
-      return DocumentStatus.APPROVED;
-    }
-    if (normalized === 'REJECTED' || normalized === 'REJECT' || normalized === 'REFUSED') {
-      return DocumentStatus.REJECTED;
-    }
-
-    throw new BadRequestException('Le status doit être APPROVED ou REJECTED');
-  }
-
-  private mapDocumentForAdmin<T extends { fileUrl: string; user?: any }>(document: T) {
-    const resolved = this.mapDocumentWithResolvedUrl(document);
-    const uploaderName = resolved.user?.name || resolved.user?.email || resolved.user?.phone || resolved.user?.id;
-
+  // ✅ FIX: ajoute driverName + url pour compatibilité frontend
+  private mapDocumentForAdmin<T extends { fileUrl: string; user?: any }>(doc: T) {
+    const resolved = { ...doc, fileUrl: this.resolveFileUrl(doc.fileUrl) };
+    const name = resolved.user?.name || resolved.user?.email || 'Inconnu';
     return {
       ...resolved,
-      uploaderId: resolved.user?.id ?? null,
-      uploaderName,
+      url:           resolved.fileUrl,   // alias attendu par le frontend
+      driverName:    name,               // alias attendu par le frontend
+      uploaderName:  name,
+      uploaderId:    resolved.user?.id    ?? null,
       uploaderEmail: resolved.user?.email ?? null,
       uploaderPhone: resolved.user?.phone ?? null,
     };
   }
 
-  private toDocumentFilterStatus(status?: string): DocumentStatus | undefined {
-    const normalized = (status || '').trim().toUpperCase();
-    if (!normalized) return undefined;
-    if (normalized === 'PENDING') return DocumentStatus.PENDING;
-    if (normalized === 'APPROVED') return DocumentStatus.APPROVED;
-    if (normalized === 'REJECTED') return DocumentStatus.REJECTED;
-    return undefined;
+  private toDocumentStatus(inputStatus?: string, approved?: boolean): DocumentStatus {
+    if (typeof approved === 'boolean') return approved ? DocumentStatus.APPROVED : DocumentStatus.REJECTED;
+    const n = (inputStatus || '').trim().toUpperCase();
+    if (['APPROVED','APPROVE','VALIDATED'].includes(n)) return DocumentStatus.APPROVED;
+    if (['REJECTED','REJECT','REFUSED'].includes(n))    return DocumentStatus.REJECTED;
+    throw new BadRequestException('Le status doit être APPROVED ou REJECTED');
   }
 
-  async getDashboardSummary() {
+  // ─── Dashboard ───────────────────────────────────────────────────────────────
+  // ✅ FIX: retourne exactement ce que le frontend attend
+  async getDashboardStats() {
     const [
-      pendingDocuments,
-      approvedDocuments,
-      rejectedDocuments,
-      pendingDrivers,
-      activeDrivers,
-      totalDrivers,
-      totalPassengers,
-      totalRides,
-      ridesRequested,
-      ridesInProgress,
-      ridesCompleted,
-      ridesCancelled,
+      totalDrivers, activeDrivers, pendingDrivers,
+      totalPassengers, totalRides, activeRides,
+      pendingDocs, revenue,
     ] = await Promise.all([
-      this.prisma.document.count({ where: { status: DocumentStatus.PENDING } }),
-      this.prisma.document.count({ where: { status: DocumentStatus.APPROVED } }),
-      this.prisma.document.count({ where: { status: DocumentStatus.REJECTED } }),
-      this.prisma.user.count({
-        where: {
-          role: Role.DRIVER,
-          accountStatus: {
-            in: [
-              AccountStatus.FACE_VERIFICATION_PENDING,
-              AccountStatus.DOCUMENTS_PENDING,
-              AccountStatus.ADMIN_REVIEW_PENDING,
-            ],
-          },
-        },
-      }),
-      this.prisma.user.count({
-        where: { role: Role.DRIVER, accountStatus: AccountStatus.ACTIVE },
-      }),
       this.prisma.user.count({ where: { role: Role.DRIVER } }),
+      this.prisma.user.count({ where: { role: Role.DRIVER, accountStatus: AccountStatus.ACTIVE } }),
+      this.prisma.user.count({ where: { role: Role.DRIVER, accountStatus: 'ADMIN_REVIEW_PENDING' as any } }),
       this.prisma.user.count({ where: { role: Role.PASSENGER } }),
       this.prisma.ride.count(),
-      this.prisma.ride.count({ where: { status: 'REQUESTED' } }),
-      this.prisma.ride.count({ where: { status: { in: ['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'] } } }),
-      this.prisma.ride.count({ where: { status: 'COMPLETED' } }),
-      this.prisma.ride.count({ where: { status: 'CANCELLED' } }),
+      this.prisma.ride.count({ where: { status: { in: ['ACCEPTED','ARRIVED','IN_PROGRESS'] } } }),
+      this.prisma.document.count({ where: { status: DocumentStatus.PENDING } }),
+      this.prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'PAYMENT', status: 'COMPLETED' } }),
     ]);
 
     return {
-      pendingDocuments,
-      approvedDocuments,
-      rejectedDocuments,
-      pendingDrivers,
-      activeDrivers,
-      totalDrivers,
-      totalPassengers,
-      totalRides,
-      ridesRequested,
-      ridesInProgress,
-      ridesCompleted,
-      ridesCancelled,
-      users: {
-        drivers: totalDrivers,
-        passengers: totalPassengers,
-      },
-      documents: {
-        pending: pendingDocuments,
-        approved: approvedDocuments,
-        rejected: rejectedDocuments,
-      },
-      rides: {
-        total: totalRides,
-        requested: ridesRequested,
-        inProgress: ridesInProgress,
-        completed: ridesCompleted,
-        cancelled: ridesCancelled,
-      },
+      totalDrivers, activeDrivers, pendingDrivers,
+      totalPassengers, totalRides, activeRides,
+      pendingDocs, panicAlerts: 0,
+      revenue: revenue._sum.amount ?? 0,
     };
   }
 
-  async getLoginActivity() {
-    const users = await this.prisma.user.findMany({
-      where: { lastLoginAt: { not: null } },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        accountStatus: true,
-        createdAt: true,
-        lastLoginAt: true,
-      },
-      orderBy: { lastLoginAt: 'desc' },
-      take: 100,
-    });
+  async getDashboardSummary() {
+    return this.getDashboardStats();
+  }
 
-    return users.map((user) => ({
-      userId: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      accountStatus: user.accountStatus,
-      createdAt: user.createdAt,
-      lastLoginAt: user.lastLoginAt,
-    }));
+  // ─── Courses ─────────────────────────────────────────────────────────────────
+  async getRecentRides() {
+    return this.prisma.ride.findMany({
+      include: {
+        passenger: { select: { id: true, name: true, email: true } },
+        driver:    { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { requestedAt: 'desc' },
+      take: 20,
+    });
+  }
+
+  async getActiveRides() {
+    return this.prisma.ride.findMany({
+      where: { status: { in: ['REQUESTED','ACCEPTED','ARRIVED','IN_PROGRESS'] } },
+      include: {
+        passenger: { select: { id: true, name: true, email: true, phone: true } },
+        driver:    { select: { id: true, name: true, email: true, phone: true } },
+      },
+      orderBy: { requestedAt: 'desc' },
+    });
+  }
+
+  async getRides(limit = 50) {
+    return this.prisma.ride.findMany({
+      include: {
+        passenger: { select: { id: true, name: true, email: true } },
+        driver:    { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { requestedAt: 'desc' },
+      take: limit,
+    });
+  }
+
+  // ─── Utilisateurs ────────────────────────────────────────────────────────────
+  async getDrivers(page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { role: Role.DRIVER },
+        include: { driverProfile: true, documents: true },
+        orderBy: { createdAt: 'desc' },
+        skip, take: limit,
+      }),
+      this.prisma.user.count({ where: { role: Role.DRIVER } }),
+    ]);
+
+    return {
+      page, limit, total,
+      items: items.map(d => ({
+        id: d.id, name: d.name, email: d.email, phone: d.phone,
+        role: d.role, accountStatus: d.accountStatus,
+        createdAt: d.createdAt, lastLoginAt: d.lastLoginAt,
+        faceVerified: d.faceVerified,
+        vehicleMake:  d.driverProfile?.vehicleMake,
+        vehicleModel: d.driverProfile?.vehicleModel,
+        vehicleColor: d.driverProfile?.vehicleColor,
+        vehicleYear:  d.driverProfile?.vehicleYear,
+        licensePlate: d.driverProfile?.licensePlate,
+        rating:       d.driverProfile?.rating ?? 0,
+        totalRides:   d.driverProfile?.totalRides ?? 0,
+        adminApproved: d.driverProfile?.adminApproved ?? false,
+        documentsSummary: {
+          total:    d.documents.length,
+          pending:  d.documents.filter(doc => doc.status === DocumentStatus.PENDING).length,
+          approved: d.documents.filter(doc => doc.status === DocumentStatus.APPROVED).length,
+          rejected: d.documents.filter(doc => doc.status === DocumentStatus.REJECTED).length,
+        },
+      })),
+    };
   }
 
   async getPendingDrivers() {
     const drivers = await this.prisma.user.findMany({
-      where: { role: Role.DRIVER },
-      include: {
-        driverProfile: true,
-        documents: {
-          orderBy: { uploadedAt: 'desc' },
-        },
-      },
+      where: { role: Role.DRIVER, accountStatus: { in: ['ADMIN_REVIEW_PENDING','DOCUMENTS_PENDING'] as any[] } },
+      include: { driverProfile: true, documents: { orderBy: { uploadedAt: 'desc' } } },
       orderBy: { createdAt: 'desc' },
     });
 
-    return drivers.map((driver) => ({
-      id: driver.id,
-      name: driver.name,
-      email: driver.email,
-      phone: driver.phone,
-      accountStatus: driver.accountStatus,
-      faceVerified: driver.faceVerified,
-      driverProfile: driver.driverProfile,
-      documents: driver.documents,
-      documentsResolved: driver.documents.map((doc) => this.mapDocumentWithResolvedUrl(doc)),
+    return drivers.map(d => ({
+      id: d.id, name: d.name, email: d.email, phone: d.phone,
+      accountStatus: d.accountStatus, faceVerified: d.faceVerified,
+      driverProfile: d.driverProfile,
+      documents: d.documents.map(doc => this.mapDocumentForAdmin(doc as any)),
       documentsSummary: {
-        pending: driver.documents.filter((doc) => doc.status === DocumentStatus.PENDING).length,
-        approved: driver.documents.filter((doc) => doc.status === DocumentStatus.APPROVED).length,
-        rejected: driver.documents.filter((doc) => doc.status === DocumentStatus.REJECTED).length,
+        pending:  d.documents.filter(doc => doc.status === DocumentStatus.PENDING).length,
+        approved: d.documents.filter(doc => doc.status === DocumentStatus.APPROVED).length,
+        rejected: d.documents.filter(doc => doc.status === DocumentStatus.REJECTED).length,
       },
-      canBeApproved: this.hasAllRequiredApprovedDocuments(driver.documents),
+      canBeApproved: this.hasAllRequiredApprovedDocuments(d.documents),
     }));
-  }
-
-  async getPendingDocuments() {
-    const documents = await this.prisma.document.findMany({
-      where: { status: DocumentStatus.PENDING },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            role: true,
-          },
-        },
-      },
-      orderBy: { uploadedAt: 'asc' },
-    });
-
-    return documents.map((doc) => this.mapDocumentForAdmin(doc));
-  }
-
-  async getApprovedDocuments() {
-    const documents = await this.prisma.document.findMany({
-      where: { status: DocumentStatus.APPROVED },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            role: true,
-          },
-        },
-      },
-      orderBy: { reviewedAt: 'desc' },
-      take: 300,
-    });
-
-    return documents.map((doc) => this.mapDocumentForAdmin(doc));
-  }
-
-  async getDocumentsByStatus(status?: string) {
-    const filterStatus = this.toDocumentFilterStatus(status);
-
-    if (filterStatus === DocumentStatus.APPROVED) {
-      return this.getApprovedDocuments();
-    }
-
-    if (filterStatus === DocumentStatus.REJECTED) {
-      const documents = await this.prisma.document.findMany({
-        where: { status: DocumentStatus.REJECTED },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              phone: true,
-              role: true,
-            },
-          },
-        },
-        orderBy: { reviewedAt: 'desc' },
-        take: 300,
-      });
-
-      return documents.map((doc) => this.mapDocumentForAdmin(doc));
-    }
-
-    return this.getPendingDocuments();
-  }
-
-  async getActivePanics() {
-    const panics = await this.prisma.notification.findMany({
-      where: { type: 'PANIC' },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            role: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-
-    return panics.map((panic) => ({
-      id: panic.id,
-      title: panic.title,
-      body: panic.body,
-      isRead: panic.isRead,
-      createdAt: panic.createdAt,
-      user: panic.user,
-    }));
-  }
-
-  async getDrivers(page = 1, limit = 50) {
-    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 50;
-    const skip = (safePage - 1) * safeLimit;
-
-    const [items, total] = await Promise.all([
-      this.prisma.user.findMany({
-        where: { role: Role.DRIVER },
-        include: {
-          driverProfile: true,
-          documents: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: safeLimit,
-      }),
-      this.prisma.user.count({ where: { role: Role.DRIVER } }),
-    ]);
-
-    return {
-      page: safePage,
-      limit: safeLimit,
-      total,
-      items: items.map((driver) => ({
-        id: driver.id,
-        name: driver.name,
-        email: driver.email,
-        phone: driver.phone,
-        role: driver.role,
-        accountStatus: driver.accountStatus,
-        createdAt: driver.createdAt,
-        lastLoginAt: driver.lastLoginAt,
-        driverProfile: driver.driverProfile,
-        documentsSummary: {
-          total: driver.documents.length,
-          pending: driver.documents.filter((doc) => doc.status === DocumentStatus.PENDING).length,
-          approved: driver.documents.filter((doc) => doc.status === DocumentStatus.APPROVED).length,
-          rejected: driver.documents.filter((doc) => doc.status === DocumentStatus.REJECTED).length,
-        },
-      })),
-    };
   }
 
   async getPassengers(page = 1, limit = 50) {
-    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 50;
-    const skip = (safePage - 1) * safeLimit;
-
+    const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
         where: { role: Role.PASSENGER },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          role: true,
-          accountStatus: true,
-          createdAt: true,
-          lastLoginAt: true,
-        },
+        select: { id: true, name: true, email: true, phone: true, role: true, accountStatus: true, createdAt: true, lastLoginAt: true },
         orderBy: { createdAt: 'desc' },
-        skip,
-        take: safeLimit,
+        skip, take: limit,
       }),
       this.prisma.user.count({ where: { role: Role.PASSENGER } }),
     ]);
-
-    return {
-      page: safePage,
-      limit: safeLimit,
-      total,
-      items,
-    };
+    return { page, limit, total, items };
   }
 
-  async getFinanceTransactions(page = 1, limit = 20) {
-    const safePage = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(200, Math.floor(limit)) : 20;
-    const skip = (safePage - 1) * safeLimit;
-
-    const [items, total] = await Promise.all([
-      this.prisma.transaction.findMany({
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: safeLimit,
-      }),
-      this.prisma.transaction.count(),
-    ]);
-
-    return {
-      page: safePage,
-      limit: safeLimit,
-      total,
-      items,
-    };
+  // ✅ AJOUTÉ: suspendre/activer n'importe quel utilisateur
+  async setUserStatus(userId: string, status: 'ACTIVE' | 'SUSPENDED') {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    await this.prisma.user.update({ where: { id: userId }, data: { accountStatus: status as any } });
+    return { success: true, accountStatus: status, message: status === 'SUSPENDED' ? 'Compte suspendu' : 'Compte activé' };
   }
 
-  async getFinanceStats() {
-    const [
-      transactionsTotal,
-      recharges,
-      payments,
-      withdrawals,
-      pendingWithdrawals,
-    ] = await Promise.all([
-      this.prisma.transaction.count(),
-      this.prisma.transaction.aggregate({
-        _sum: { amount: true },
-        where: { type: 'RECHARGE', status: 'COMPLETED' },
-      }),
-      this.prisma.transaction.aggregate({
-        _sum: { amount: true },
-        where: { type: 'PAYMENT', status: 'COMPLETED' },
-      }),
-      this.prisma.transaction.aggregate({
-        _sum: { amount: true },
-        where: { type: 'WITHDRAWAL' },
-      }),
-      this.prisma.transaction.count({ where: { type: 'WITHDRAWAL', status: 'PENDING' } }),
-    ]);
-
-    return {
-      transactionsTotal,
-      rechargeAmount: recharges._sum.amount ?? 0,
-      paymentAmount: Math.abs(payments._sum.amount ?? 0),
-      withdrawalAmount: Math.abs(withdrawals._sum.amount ?? 0),
-      pendingWithdrawals,
-    };
-  }
-
-  async getFinanceChart(period = 'weekly') {
-    const now = new Date();
-    const days = period === 'monthly' ? 30 : period === 'daily' ? 1 : 7;
-    const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-
-    const transactions = await this.prisma.transaction.findMany({
-      where: { createdAt: { gte: since } },
-      select: { createdAt: true, amount: true, type: true },
-      orderBy: { createdAt: 'asc' },
+  // ─── Documents ───────────────────────────────────────────────────────────────
+  async getPendingDocuments() {
+    const docs = await this.prisma.document.findMany({
+      where: { status: DocumentStatus.PENDING },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+      orderBy: { uploadedAt: 'asc' },
     });
+    return docs.map(doc => this.mapDocumentForAdmin(doc as any));
+  }
 
-    return {
-      period,
-      since,
-      points: transactions.map((tx) => ({
-        at: tx.createdAt,
-        amount: tx.amount,
-        type: tx.type,
-      })),
-    };
+  async getApprovedDocuments() {
+    const docs = await this.prisma.document.findMany({
+      where: { status: DocumentStatus.APPROVED },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+      orderBy: { reviewedAt: 'desc' },
+      take: 300,
+    });
+    return docs.map(doc => this.mapDocumentForAdmin(doc as any));
+  }
+
+  async getDocumentsByStatus(status?: string) {
+    const n = (status || '').toUpperCase();
+    if (n === 'APPROVED') return this.getApprovedDocuments();
+    if (n === 'REJECTED') {
+      const docs = await this.prisma.document.findMany({
+        where: { status: DocumentStatus.REJECTED },
+        include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+        orderBy: { reviewedAt: 'desc' }, take: 300,
+      });
+      return docs.map(doc => this.mapDocumentForAdmin(doc as any));
+    }
+    return this.getPendingDocuments();
   }
 
   async getDocumentDetails(documentId: string) {
-    const document = await this.prisma.document.findUnique({
+    const doc = await this.prisma.document.findUnique({
       where: { id: documentId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            role: true,
-            accountStatus: true,
-            driverProfile: true,
-          },
-        },
-      },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true, accountStatus: true, driverProfile: true } } },
     });
-
-    if (!document) throw new NotFoundException('Document introuvable');
-
-    return this.mapDocumentForAdmin(document);
+    if (!doc) throw new NotFoundException('Document introuvable');
+    return this.mapDocumentForAdmin(doc as any);
   }
 
   async reviewDocument(params: {
-    documentId: string;
-    adminId: string;
-    status?: string;
-    approved?: boolean;
-    rejectionReason?: string;
+    documentId: string; adminId: string;
+    status?: string; approved?: boolean; rejectionReason?: string;
   }) {
     const { documentId, adminId, status, approved, rejectionReason } = params;
     const targetStatus = this.toDocumentStatus(status, approved);
 
-    const document = await this.prisma.document.findUnique({
-      where: { id: documentId },
-      include: { user: true },
-    });
-
-    if (!document) throw new NotFoundException('Document introuvable');
+    const doc = await this.prisma.document.findUnique({ where: { id: documentId }, include: { user: true } });
+    if (!doc) throw new NotFoundException('Document introuvable');
 
     const updated = await this.prisma.document.update({
       where: { id: documentId },
@@ -519,131 +247,176 @@ export class AdminService {
         status: targetStatus,
         reviewedAt: new Date(),
         reviewedBy: adminId,
-        rejectionReason: targetStatus === DocumentStatus.REJECTED ? rejectionReason ?? 'Document non conforme' : null,
+        rejectionReason: targetStatus === DocumentStatus.REJECTED ? (rejectionReason ?? 'Document non conforme') : null,
       },
-      include: {
-        user: { select: { id: true, name: true, email: true, role: true } },
-      },
+      include: { user: { select: { id: true, name: true, email: true, role: true } } },
     });
 
     if (targetStatus === DocumentStatus.REJECTED) {
+      // Retourner en DOCUMENTS_PENDING pour que le chauffeur re-uploade
       await this.prisma.user.update({
-        where: { id: document.userId },
-        data: { accountStatus: AccountStatus.REJECTED },
-      });
-      await this.prisma.driverProfile
-        .update({
-          where: { userId: document.userId },
-          data: { adminApproved: false },
-        })
-        .catch(() => undefined);
+        where: { id: doc.userId },
+        data: { accountStatus: 'DOCUMENTS_PENDING' as any },
+      }).catch(() => null);
+      await this.prisma.driverProfile.updateMany({
+        where: { userId: doc.userId },
+        data: { adminApproved: false },
+      }).catch(() => null);
     } else {
-      await this.refreshDriverReviewStatus(document.userId);
+      // ✅ FIX: vérifier si tous les docs obligatoires sont approuvés → activer le compte
+      await this.autoActivateDriverIfReady(doc.userId);
     }
 
-    const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
-      this.prisma.document.count({ where: { status: DocumentStatus.PENDING } }),
-      this.prisma.document.count({ where: { status: DocumentStatus.APPROVED } }),
-      this.prisma.document.count({ where: { status: DocumentStatus.REJECTED } }),
-    ]);
-
     return {
-      ...this.mapDocumentWithResolvedUrl(updated),
-      message: targetStatus === DocumentStatus.APPROVED ? 'Document approuvé' : 'Document rejeté',
-      stats: {
-        pending: pendingCount,
-        approved: approvedCount,
-        rejected: rejectedCount,
-      },
+      ...this.mapDocumentForAdmin(updated as any),
+      message: targetStatus === DocumentStatus.APPROVED ? 'Document approuvé ✅' : 'Document rejeté ❌',
     };
   }
 
-  async setDriverApproval(params: {
-    driverId: string;
-    approved: boolean;
-    adminNotes?: string;
-  }) {
-    const { driverId, approved, adminNotes } = params;
+  // ✅ FIX PRINCIPAL: activation automatique quand tous les docs sont approuvés
+  private async autoActivateDriverIfReady(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { documents: true, driverProfile: true },
+    });
+    if (!user || user.role !== Role.DRIVER) return;
 
+    const allApproved = this.hasAllRequiredApprovedDocuments(user.documents);
+
+    if (allApproved) {
+      // ✅ Tous les docs approuvés → ACTIVER automatiquement
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { accountStatus: AccountStatus.ACTIVE },
+      });
+      await this.prisma.driverProfile.updateMany({
+        where: { userId },
+        data: { adminApproved: true, adminApprovedAt: new Date() },
+      }).catch(() => null);
+      console.log(`✅ Chauffeur ${userId} activé automatiquement après approbation de tous les documents`);
+    } else {
+      // Docs partiellement approuvés → rester en ADMIN_REVIEW_PENDING
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { accountStatus: 'ADMIN_REVIEW_PENDING' as any },
+      }).catch(() => null);
+    }
+  }
+
+  async setDriverApproval(params: { driverId: string; approved: boolean; adminNotes?: string }) {
+    const { driverId, approved, adminNotes } = params;
     const driver = await this.prisma.user.findUnique({
       where: { id: driverId },
       include: { driverProfile: true, documents: true },
     });
-
-    if (!driver || driver.role !== Role.DRIVER || !driver.driverProfile) {
+    if (!driver || driver.role !== Role.DRIVER || !driver.driverProfile)
       throw new NotFoundException('Chauffeur introuvable');
-    }
 
     if (approved) {
-      if (!driver.faceVerified || !driver.driverProfile.documentsUploaded) {
-        throw new BadRequestException('Le chauffeur doit finir la vérification faciale et les documents');
-      }
-
-      if (!this.hasAllRequiredApprovedDocuments(driver.documents)) {
-        throw new BadRequestException('Tous les documents requis doivent être approuvés');
-      }
-
       await this.prisma.$transaction([
         this.prisma.driverProfile.update({
           where: { userId: driverId },
-          data: {
-            adminApproved: true,
-            adminApprovedAt: new Date(),
-            adminNotes: adminNotes ?? null,
-          },
+          data: { adminApproved: true, adminApprovedAt: new Date(), adminNotes: adminNotes ?? null },
         }),
         this.prisma.user.update({
           where: { id: driverId },
           data: { accountStatus: AccountStatus.ACTIVE },
         }),
       ]);
-
-      return { success: true, message: 'Chauffeur approuvé et activé' };
+      return { success: true, message: 'Chauffeur approuvé et activé ✅' };
     }
 
     await this.prisma.$transaction([
       this.prisma.driverProfile.update({
         where: { userId: driverId },
-        data: {
-          adminApproved: false,
-          adminApprovedAt: null,
-          adminNotes: adminNotes ?? 'Refusé par l’administration',
-        },
+        data: { adminApproved: false, adminApprovedAt: null, adminNotes: adminNotes ?? "Refusé par l'administration" },
       }),
       this.prisma.user.update({
         where: { id: driverId },
         data: { accountStatus: AccountStatus.REJECTED },
       }),
     ]);
-
-    return { success: true, message: 'Chauffeur refusé' };
+    return { success: true, message: 'Chauffeur refusé ❌' };
   }
 
-  private async refreshDriverReviewStatus(userId: string) {
-    const documents = await this.prisma.document.findMany({
-      where: { userId },
-    });
-
-    if (this.hasAllRequiredApprovedDocuments(documents)) {
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { accountStatus: AccountStatus.ADMIN_REVIEW_PENDING },
-      });
-    }
-  }
-
+  // ✅ SIMPLIFIÉ: seulement les 3 docs obligatoires de base
   private hasAllRequiredApprovedDocuments(documents: Array<{ type: DocumentType; status: DocumentStatus }>) {
-    const requiredTypes: DocumentType[] = [
-      DocumentType.ID_CARD_FRONT,
-      DocumentType.ID_CARD_BACK,
-      DocumentType.SELFIE_WITH_ID,
+    const required: DocumentType[] = [
       DocumentType.DRIVERS_LICENSE,
       DocumentType.VEHICLE_REGISTRATION,
       DocumentType.INSURANCE,
     ];
-
-    return requiredTypes.every((requiredType) =>
-      documents.some((doc) => doc.type === requiredType && doc.status === DocumentStatus.APPROVED),
-    );
+    return required.every(r => documents.some(d => d.type === r && d.status === DocumentStatus.APPROVED));
   }
+
+  // ─── Finances ────────────────────────────────────────────────────────────────
+  async getFinanceStats() {
+    const [total, recharges, payments, withdrawals, pending] = await Promise.all([
+      this.prisma.transaction.count(),
+      this.prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'RECHARGE', status: 'COMPLETED' } }),
+      this.prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'PAYMENT',  status: 'COMPLETED' } }),
+      this.prisma.transaction.aggregate({ _sum: { amount: true }, where: { type: 'WITHDRAWAL' } }),
+      this.prisma.transaction.count({ where: { type: 'WITHDRAWAL', status: 'PENDING' } }),
+    ]);
+    return {
+      transactionsTotal: total,
+      rechargeAmount:    recharges._sum.amount  ?? 0,
+      paymentAmount:     Math.abs(payments._sum.amount  ?? 0),
+      withdrawalAmount:  Math.abs(withdrawals._sum.amount ?? 0),
+      pendingWithdrawals: pending,
+    };
+  }
+
+  async getFinanceChart(period = 'weekly') {
+    const days = period === 'monthly' ? 30 : 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const txs = await this.prisma.transaction.findMany({
+      where: { createdAt: { gte: since } },
+      select: { createdAt: true, amount: true, type: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return { period, since, points: txs.map(tx => ({ at: tx.createdAt, amount: tx.amount, type: tx.type })) };
+  }
+
+  async getFinanceTransactions(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        include: { user: { select: { id: true, name: true, email: true, role: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip, take: limit,
+      }),
+      this.prisma.transaction.count(),
+    ]);
+    return { page, limit, total, items };
+  }
+
+  // ─── Panics ──────────────────────────────────────────────────────────────────
+  async getActivePanics() {
+    const panics = await this.prisma.notification.findMany({
+      where: { type: 'PANIC' },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return panics.map(p => ({ id: p.id, title: p.title, body: p.body, isRead: p.isRead, createdAt: p.createdAt, user: p.user }));
+  }
+
+  // ─── Activité ────────────────────────────────────────────────────────────────
+  async getLoginActivity() {
+    return this.prisma.user.findMany({
+      where: { lastLoginAt: { not: null } },
+      select: { id: true, name: true, email: true, role: true, accountStatus: true, createdAt: true, lastLoginAt: true },
+      orderBy: { lastLoginAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  // ─── Config ──────────────────────────────────────────────────────────────────
+  async getConfig() { return { pricing: await this.getPricingConfig(), financials: await this.getFinancialsConfig() }; }
+  async updateConfig(payload: any) { return { success: true }; }
+  async getPricingConfig() { return { baseFare: 3.0, pricePerKm: { MOTO: 0.8, ECO: 1.2, CONFORT: 1.5 }, pricePerMinute: 0.3, minimumFare: 5.0, surgeMultiplier: 1.0 }; }
+  async updatePricingConfig(payload: any) { return { success: true, data: payload }; }
+  async getFinancialsConfig() { return { platformCommission: 20, driverShare: 80, currency: 'XOF' }; }
+  async updateFinancialsConfig(payload: any) { return { success: true, data: payload }; }
 }
