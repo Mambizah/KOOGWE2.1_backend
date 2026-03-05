@@ -10,9 +10,54 @@ import { PrismaService } from '../prisma.service';
 export class AdminService {
   constructor(private prisma: PrismaService) {}
 
+  private getPublicBaseUrl() {
+    const explicitPublicBase = process.env.PUBLIC_BASE_URL?.trim();
+    if (explicitPublicBase) return explicitPublicBase;
+
+    const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+    if (railwayDomain) return `https://${railwayDomain}`;
+
+    return `http://localhost:${process.env.PORT || 3000}`;
+  }
+
+  private resolveFileUrl(fileUrl: string) {
+    if (!fileUrl) return fileUrl;
+
+    if (fileUrl.startsWith('http://localhost') || fileUrl.startsWith('https://localhost')) {
+      const uploadsIndex = fileUrl.indexOf('/uploads/');
+      if (uploadsIndex >= 0) {
+        return `${this.getPublicBaseUrl()}${fileUrl.slice(uploadsIndex)}`;
+      }
+    }
+
+    return fileUrl;
+  }
+
+  private mapDocumentWithResolvedUrl<T extends { fileUrl: string }>(document: T) {
+    return {
+      ...document,
+      fileUrl: this.resolveFileUrl(document.fileUrl),
+    };
+  }
+
   async getDashboardSummary() {
-    const [pendingDocuments, pendingDrivers, activeDrivers, totalDrivers] = await Promise.all([
+    const [
+      pendingDocuments,
+      approvedDocuments,
+      rejectedDocuments,
+      pendingDrivers,
+      activeDrivers,
+      totalDrivers,
+      totalPassengers,
+      totalRides,
+      ridesRequested,
+      ridesInProgress,
+      ridesCompleted,
+      ridesCancelled,
+    ] = await Promise.all([
       this.prisma.document.count({ where: { status: DocumentStatus.PENDING } }),
+      this.prisma.document.count({ where: { status: DocumentStatus.APPROVED } }),
+      this.prisma.document.count({ where: { status: DocumentStatus.REJECTED } }),
       this.prisma.user.count({
         where: {
           role: Role.DRIVER,
@@ -29,13 +74,43 @@ export class AdminService {
         where: { role: Role.DRIVER, accountStatus: AccountStatus.ACTIVE },
       }),
       this.prisma.user.count({ where: { role: Role.DRIVER } }),
+      this.prisma.user.count({ where: { role: Role.PASSENGER } }),
+      this.prisma.ride.count(),
+      this.prisma.ride.count({ where: { status: 'REQUESTED' } }),
+      this.prisma.ride.count({ where: { status: { in: ['ACCEPTED', 'ARRIVED', 'IN_PROGRESS'] } } }),
+      this.prisma.ride.count({ where: { status: 'COMPLETED' } }),
+      this.prisma.ride.count({ where: { status: 'CANCELLED' } }),
     ]);
 
     return {
       pendingDocuments,
+      approvedDocuments,
+      rejectedDocuments,
       pendingDrivers,
       activeDrivers,
       totalDrivers,
+      totalPassengers,
+      totalRides,
+      ridesRequested,
+      ridesInProgress,
+      ridesCompleted,
+      ridesCancelled,
+      users: {
+        drivers: totalDrivers,
+        passengers: totalPassengers,
+      },
+      documents: {
+        pending: pendingDocuments,
+        approved: approvedDocuments,
+        rejected: rejectedDocuments,
+      },
+      rides: {
+        total: totalRides,
+        requested: ridesRequested,
+        inProgress: ridesInProgress,
+        completed: ridesCompleted,
+        cancelled: ridesCancelled,
+      },
     };
   }
 
@@ -87,6 +162,7 @@ export class AdminService {
       faceVerified: driver.faceVerified,
       driverProfile: driver.driverProfile,
       documents: driver.documents,
+      documentsResolved: driver.documents.map((doc) => this.mapDocumentWithResolvedUrl(doc)),
       documentsSummary: {
         pending: driver.documents.filter((doc) => doc.status === DocumentStatus.PENDING).length,
         approved: driver.documents.filter((doc) => doc.status === DocumentStatus.APPROVED).length,
@@ -97,7 +173,7 @@ export class AdminService {
   }
 
   async getPendingDocuments() {
-    return this.prisma.document.findMany({
+    const documents = await this.prisma.document.findMany({
       where: { status: DocumentStatus.PENDING },
       include: {
         user: {
@@ -112,6 +188,52 @@ export class AdminService {
       },
       orderBy: { uploadedAt: 'asc' },
     });
+
+    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
+  }
+
+  async getApprovedDocuments() {
+    const documents = await this.prisma.document.findMany({
+      where: { status: DocumentStatus.APPROVED },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            role: true,
+          },
+        },
+      },
+      orderBy: { reviewedAt: 'desc' },
+      take: 300,
+    });
+
+    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
+  }
+
+  async getDocumentDetails(documentId: string) {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            role: true,
+            accountStatus: true,
+            driverProfile: true,
+          },
+        },
+      },
+    });
+
+    if (!document) throw new NotFoundException('Document introuvable');
+
+    return this.mapDocumentWithResolvedUrl(document);
   }
 
   async reviewDocument(params: {
@@ -161,7 +283,21 @@ export class AdminService {
       await this.refreshDriverReviewStatus(document.userId);
     }
 
-    return updated;
+    const [pendingCount, approvedCount, rejectedCount] = await Promise.all([
+      this.prisma.document.count({ where: { status: DocumentStatus.PENDING } }),
+      this.prisma.document.count({ where: { status: DocumentStatus.APPROVED } }),
+      this.prisma.document.count({ where: { status: DocumentStatus.REJECTED } }),
+    ]);
+
+    return {
+      ...this.mapDocumentWithResolvedUrl(updated),
+      message: status === DocumentStatus.APPROVED ? 'Document approuvé' : 'Document rejeté',
+      stats: {
+        pending: pendingCount,
+        approved: approvedCount,
+        rejected: rejectedCount,
+      },
+    };
   }
 
   async setDriverApproval(params: {

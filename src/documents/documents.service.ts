@@ -32,6 +32,26 @@ export class DocumentsService {
     return `http://localhost:${process.env.PORT || 3000}`;
   }
 
+  private resolveFileUrl(fileUrl: string) {
+    if (!fileUrl) return fileUrl;
+
+    if (fileUrl.startsWith('http://localhost') || fileUrl.startsWith('https://localhost')) {
+      const uploadsIndex = fileUrl.indexOf('/uploads/');
+      if (uploadsIndex >= 0) {
+        return `${this.getPublicBaseUrl()}${fileUrl.slice(uploadsIndex)}`;
+      }
+    }
+
+    return fileUrl;
+  }
+
+  private mapDocumentWithResolvedUrl<T extends { fileUrl: string }>(document: T) {
+    return {
+      ...document,
+      fileUrl: this.resolveFileUrl(document.fileUrl),
+    };
+  }
+
   private hasRequiredVehicleInfo(profile: {
     vehicleMake: string | null;
     vehicleModel: string | null;
@@ -121,7 +141,7 @@ export class DocumentsService {
   }
 
   async listPendingDocuments() {
-    return this.prisma.document.findMany({
+    const documents = await this.prisma.document.findMany({
       where: { status: DocumentStatus.PENDING },
       include: {
         user: {
@@ -143,6 +163,36 @@ export class DocumentsService {
       },
       orderBy: { uploadedAt: 'asc' },
     });
+
+    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
+  }
+
+  async listApprovedDocuments() {
+    const documents = await this.prisma.document.findMany({
+      where: { status: DocumentStatus.APPROVED },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            accountStatus: true,
+            driverProfile: {
+              select: {
+                faceVerified: true,
+                documentsUploaded: true,
+                adminApproved: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { reviewedAt: 'desc' },
+      take: 300,
+    });
+
+    return documents.map((doc) => this.mapDocumentWithResolvedUrl(doc));
   }
 
   async listPendingDrivers() {

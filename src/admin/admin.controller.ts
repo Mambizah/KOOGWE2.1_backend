@@ -20,6 +20,12 @@ export class AdminController {
     return this.adminService.getDashboardSummary();
   }
 
+  @Get('overview')
+  async getOverview(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getDashboardSummary();
+  }
+
   @Get('drivers/pending')
   async getPendingDrivers(@Request() req: any) {
     this.assertAdmin(req);
@@ -43,6 +49,25 @@ export class AdminController {
     this.assertAdmin(req);
     const documents = await this.adminService.getPendingDocuments();
     return { documents, total: documents.length };
+  }
+
+  @Get('documents/approved')
+  async getApprovedDocuments(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getApprovedDocuments();
+  }
+
+  @Get('approved-documents')
+  async getApprovedDocumentsAlias(@Request() req: any) {
+    this.assertAdmin(req);
+    const documents = await this.adminService.getApprovedDocuments();
+    return { documents, total: documents.length };
+  }
+
+  @Get('documents/:documentId')
+  async getDocumentDetails(@Request() req: any, @Param('documentId') documentId: string) {
+    this.assertAdmin(req);
+    return this.adminService.getDocumentDetails(documentId);
   }
 
   @Get('pending-documents')

@@ -44,6 +44,20 @@ export class DocumentsController {
     return { documents, total: documents.length };
   }
 
+  @Get('admin/approved')
+  async getApprovedDocuments(@Request() req: any) {
+    this.assertAdmin(req);
+    const documents = await this.documentsService.listApprovedDocuments();
+    return documents;
+  }
+
+  @Get('admin/approved/list')
+  async getApprovedDocumentsWrapped(@Request() req: any) {
+    this.assertAdmin(req);
+    const documents = await this.documentsService.listApprovedDocuments();
+    return { documents, total: documents.length };
+  }
+
   @Get('admin/drivers/pending')
   getPendingDrivers(@Request() req: any) {
     this.assertAdmin(req);
