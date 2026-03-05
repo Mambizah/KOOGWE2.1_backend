@@ -57,6 +57,11 @@ export class FaceVerificationService {
     downImage: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
+      const envMinSimilarity = Number(process.env.FACE_MIN_SIMILARITY ?? 75);
+      const minSimilarity = Number.isFinite(envMinSimilarity)
+        ? Math.min(100, Math.max(0, envMinSimilarity))
+        : 75;
+
       const images = [leftImage, rightImage, upImage, downImage].filter(
         img => img && img.length > 500,
       );
@@ -74,16 +79,22 @@ export class FaceVerificationService {
         similarities.push(similarity);
       }
 
-      const avgSimilarity = similarities.length > 0
-        ? similarities.reduce((a, b) => a + b, 0) / similarities.length
+      const validSimilarities = similarities.filter(similarity => similarity > 0);
+      const strongMatches = validSimilarities.filter(similarity => similarity >= minSimilarity);
+      const requiredMatches = Math.min(2, similarities.length);
+
+      const avgSimilarity = validSimilarities.length > 0
+        ? validSimilarities.reduce((a, b) => a + b, 0) / validSimilarities.length
         : 0;
 
-      console.log(`AWS avg similarity: ${avgSimilarity.toFixed(0)}%`);
+      console.log(
+        `AWS similarity check: valid=${validSimilarities.length}/${similarities.length} strong=${strongMatches.length}/${requiredMatches} avg=${avgSimilarity.toFixed(0)}% min=${minSimilarity}%`,
+      );
 
-      if (avgSimilarity < 75) {
+      if (strongMatches.length < requiredMatches) {
         return {
           success: false,
-          message: `Les images ne correspondent pas à la même personne (${avgSimilarity.toFixed(0)}%). Réessayez dans de meilleures conditions d'éclairage.`,
+          message: `Les images ne correspondent pas suffisamment à la même personne (score moyen ${avgSimilarity.toFixed(0)}%, seuil ${minSimilarity}%). Réessayez avec une bonne lumière, le visage bien centré, et évitez les mouvements brusques.`,
         };
       }
 

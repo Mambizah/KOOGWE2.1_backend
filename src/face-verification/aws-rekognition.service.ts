@@ -11,9 +11,14 @@ export class AWSRekognitionService {
   private region: string;
   private readonly uploadsRoot = join(process.cwd(), 'uploads');
   private readonly useAws: boolean;
+  private readonly compareSimilarityThreshold: number;
 
   constructor() {
     this.region = process.env.AWS_REGION || 'eu-west-3'; // Paris — plus proche Guyane
+    const envSimilarityThreshold = Number(process.env.AWS_COMPARE_MIN_SIMILARITY ?? 60);
+    this.compareSimilarityThreshold = Number.isFinite(envSimilarityThreshold)
+      ? Math.min(100, Math.max(0, envSimilarityThreshold))
+      : 60;
     this.useAws = Boolean(
       process.env.AWS_ACCESS_KEY_ID
       && process.env.AWS_SECRET_ACCESS_KEY
@@ -145,7 +150,7 @@ export class AWSRekognitionService {
       const command = new CompareFacesCommand({
         SourceImage: { Bytes: sourceBuffer },
         TargetImage: { Bytes: targetBuffer },
-        SimilarityThreshold: 80, // ✅ Réduit de 90→80 pour être moins strict
+        SimilarityThreshold: this.compareSimilarityThreshold,
       });
 
       const result = await this.rekognition.send(command);
