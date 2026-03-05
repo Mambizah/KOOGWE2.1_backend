@@ -18,6 +18,20 @@ export class DocumentsService {
 
   constructor(private prisma: PrismaService) {}
 
+  private getPublicBaseUrl() {
+    const explicitPublicBase = process.env.PUBLIC_BASE_URL?.trim();
+    if (explicitPublicBase) {
+      return explicitPublicBase;
+    }
+
+    const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+    if (railwayDomain) {
+      return `https://${railwayDomain}`;
+    }
+
+    return `http://localhost:${process.env.PORT || 3000}`;
+  }
+
   private hasRequiredVehicleInfo(profile: {
     vehicleMake: string | null;
     vehicleModel: string | null;
@@ -70,7 +84,7 @@ export class DocumentsService {
     const filePath = join(dir, fileName);
     await writeFile(filePath, buffer);
 
-    const publicBase = process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const publicBase = this.getPublicBaseUrl();
     const fileUrl = `${publicBase}/uploads/documents/${userId}/${docType}/${fileName}`;
 
     const document = await this.prisma.document.create({

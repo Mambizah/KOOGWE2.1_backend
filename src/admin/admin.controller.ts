@@ -32,6 +32,19 @@ export class AdminController {
     return this.adminService.getPendingDocuments();
   }
 
+  @Get('documents')
+  async getPendingDocumentsFlat(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getPendingDocuments();
+  }
+
+  @Get('documents/list')
+  async getPendingDocumentsList(@Request() req: any) {
+    this.assertAdmin(req);
+    const documents = await this.adminService.getPendingDocuments();
+    return { documents, total: documents.length };
+  }
+
   @Get('pending-documents')
   async getPendingDocumentsAlias(@Request() req: any) {
     this.assertAdmin(req);
@@ -69,6 +82,12 @@ export class AdminController {
 
   @Get('activity/logins')
   async getLoginActivity(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getLoginActivity();
+  }
+
+  @Get('activity/connections')
+  async getConnectionsActivity(@Request() req: any) {
     this.assertAdmin(req);
     return this.adminService.getLoginActivity();
   }

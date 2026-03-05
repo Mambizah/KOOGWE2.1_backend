@@ -31,6 +31,19 @@ export class DocumentsController {
     return this.documentsService.listPendingDocuments();
   }
 
+  @Get('pending')
+  getPendingDocumentsAlias(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.documentsService.listPendingDocuments();
+  }
+
+  @Get('admin/list')
+  async getPendingDocumentsWrapped(@Request() req: any) {
+    this.assertAdmin(req);
+    const documents = await this.documentsService.listPendingDocuments();
+    return { documents, total: documents.length };
+  }
+
   @Get('admin/drivers/pending')
   getPendingDrivers(@Request() req: any) {
     this.assertAdmin(req);
