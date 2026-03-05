@@ -8,10 +8,14 @@ import { AWSRekognitionService } from './aws-rekognition.service';
 
 @Injectable()
 export class FaceVerificationService {
+  private readonly strictMode: boolean;
+
   constructor(
     private prisma: PrismaService,
     private awsRekognition: AWSRekognitionService,
-  ) {}
+  ) {
+    this.strictMode = process.env.FACE_VERIFICATION_STRICT !== 'false';
+  }
 
   // Vérification live — étape 1 (image frontale)
   async verifyLiveFace(
@@ -19,13 +23,23 @@ export class FaceVerificationService {
     imageBase64: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
+      const envMinLiveConfidence = Number(
+        process.env.FACE_LIVE_MIN_CONFIDENCE ?? (this.strictMode ? 90 : 70),
+      );
+      const minLiveConfidence = Number.isFinite(envMinLiveConfidence)
+        ? Math.min(100, Math.max(0, envMinLiveConfidence))
+        : (this.strictMode ? 90 : 70);
+
       if (!imageBase64 || imageBase64.length < 500) {
         return { success: false, message: 'Image invalide. Réessayez.' };
       }
 
       const { isLive, confidence } = await this.awsRekognition.detectLiveness(imageBase64);
+      const liveCheckPassed = this.strictMode
+        ? (isLive && confidence >= minLiveConfidence)
+        : (isLive || confidence >= minLiveConfidence);
 
-      if (!isLive || confidence < 90) {
+      if (!liveCheckPassed) {
         return {
           success: false,
           message: 'Visage non détecté correctement. Assurez-vous d\'être bien éclairé et regardez la caméra.',
@@ -57,10 +71,18 @@ export class FaceVerificationService {
     downImage: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
-      const envMinSimilarity = Number(process.env.FACE_MIN_SIMILARITY ?? 75);
+      const defaultMinSimilarity = this.strictMode ? 75 : 60;
+      const envMinSimilarity = Number(process.env.FACE_MIN_SIMILARITY ?? defaultMinSimilarity);
       const minSimilarity = Number.isFinite(envMinSimilarity)
         ? Math.min(100, Math.max(0, envMinSimilarity))
-        : 75;
+        : defaultMinSimilarity;
+
+      const envRequiredMatches = Number(
+        process.env.FACE_REQUIRED_MATCHES ?? (this.strictMode ? 2 : 1),
+      );
+      const requestedRequiredMatches = Number.isFinite(envRequiredMatches)
+        ? Math.max(1, Math.floor(envRequiredMatches))
+        : (this.strictMode ? 2 : 1);
 
       const images = [leftImage, rightImage, upImage, downImage].filter(
         img => img && img.length > 500,
@@ -81,7 +103,7 @@ export class FaceVerificationService {
 
       const validSimilarities = similarities.filter(similarity => similarity > 0);
       const strongMatches = validSimilarities.filter(similarity => similarity >= minSimilarity);
-      const requiredMatches = Math.min(2, similarities.length);
+      const requiredMatches = Math.min(requestedRequiredMatches, similarities.length);
 
       const avgSimilarity = validSimilarities.length > 0
         ? validSimilarities.reduce((a, b) => a + b, 0) / validSimilarities.length

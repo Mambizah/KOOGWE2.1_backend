@@ -8,7 +8,37 @@ import { PrismaService } from './prisma.service';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
+function ensureDatabaseUrl() {
+  if (process.env.DATABASE_URL) return;
+
+  const fallbackUrl = process.env.DATABASE_PRIVATE_URL
+    || process.env.DATABASE_PUBLIC_URL
+    || process.env.POSTGRES_URL;
+
+  if (fallbackUrl) {
+    process.env.DATABASE_URL = fallbackUrl;
+    console.warn('⚠️ DATABASE_URL absent, fallback appliqué depuis DATABASE_PRIVATE_URL/DATABASE_PUBLIC_URL/POSTGRES_URL');
+    return;
+  }
+
+  const {
+    PGHOST,
+    PGPORT,
+    PGUSER,
+    PGPASSWORD,
+    PGDATABASE,
+  } = process.env;
+
+  if (PGHOST && PGPORT && PGUSER && PGPASSWORD && PGDATABASE) {
+    const user = encodeURIComponent(PGUSER);
+    const pass = encodeURIComponent(PGPASSWORD);
+    process.env.DATABASE_URL = `postgresql://${user}:${pass}@${PGHOST}:${PGPORT}/${PGDATABASE}?schema=public`;
+    console.warn('⚠️ DATABASE_URL reconstruit depuis les variables PG*');
+  }
+}
+
 async function bootstrap() {
+  ensureDatabaseUrl();
   const app = await NestFactory.create(AppModule);
 
   // Augmenter la limite pour les photos base64 (facial verification)
