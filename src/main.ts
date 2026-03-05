@@ -85,18 +85,7 @@ async function bootstrap() {
   }
 
   app.enableCors({
-    // ✅ Les apps mobiles Flutter n'envoient pas d'origin HTTP
-    // 'origin: true' accepte toutes les origines (ok pour dev + mobile)
-    // En prod, remplacer par les domaines exacts si besoin
-    origin: (origin, callback) => {
-      // Les apps mobiles n'envoient pas d'origin → accepter
-      if (!origin) return callback(null, true);
-      // Origins web connues → accepter
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Log d'observabilité: origine non listée, mais temporairement acceptée
-      console.warn(`⚠️ CORS origine non listée (acceptée): ${origin}`);
-      callback(null, true); // Accepter pour éviter les blocages web/mobile
-    },
+    origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     exposedHeaders: ['Content-Type', 'Authorization'],
@@ -136,6 +125,41 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
+
+  try {
+    const wsLib = require('ws');
+    const wsServer = new wsLib.WebSocketServer({ noServer: true });
+    const httpServer: any = app.getHttpServer();
+
+    wsServer.on('connection', (socket: any) => {
+      socket.send(JSON.stringify({ type: 'connected', channel: 'admin/ws' }));
+
+      const interval = setInterval(() => {
+        if (socket.readyState === wsLib.WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: 'ping', ts: new Date().toISOString() }));
+        }
+      }, 15000);
+
+      socket.on('close', () => {
+        clearInterval(interval);
+      });
+    });
+
+    httpServer.on('upgrade', (request: any, socket: any, head: any) => {
+      const url: string = request.url || '';
+      if (!url.startsWith('/admin/ws')) {
+        return;
+      }
+
+      wsServer.handleUpgrade(request, socket, head, (ws: any) => {
+        wsServer.emit('connection', ws, request);
+      });
+    });
+
+    console.log('✅ Native WebSocket /admin/ws activé');
+  } catch (error) {
+    console.warn('⚠️ WebSocket natif /admin/ws non activé:', error);
+  }
 
   console.log(`🚀 Koogwe Backend démarré sur le port ${port}`);
   console.log(`📱 Mode: ${process.env.NODE_ENV || 'development'}`);
