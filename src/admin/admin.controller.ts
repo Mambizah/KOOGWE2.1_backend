@@ -32,6 +32,12 @@ export class AdminController {
     return this.adminService.getPendingDocuments();
   }
 
+  @Get('pending-documents')
+  async getPendingDocumentsAlias(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getPendingDocuments();
+  }
+
   @Patch('documents/:documentId/review')
   async reviewDocument(
     @Request() req: any,
@@ -63,6 +69,12 @@ export class AdminController {
 
   @Get('activity/logins')
   async getLoginActivity(@Request() req: any) {
+    this.assertAdmin(req);
+    return this.adminService.getLoginActivity();
+  }
+
+  @Get('login-activity')
+  async getLoginActivityAlias(@Request() req: any) {
     this.assertAdmin(req);
     return this.adminService.getLoginActivity();
   }

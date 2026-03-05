@@ -69,6 +69,7 @@ async function bootstrap() {
     'http://127.0.0.1:42559',
     // Émulateur Android (Android Studio)
     'http://10.0.2.2:3000',
+    'https://koogwe2-1-admin.vercel.app',
   ];
 
   // Ajouter les URLs frontend définies dans .env
