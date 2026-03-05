@@ -10,6 +10,62 @@ import { PrismaService } from '../prisma.service';
 export class AdminService {
   constructor(private prisma: PrismaService) {}
 
+  async getDashboardSummary() {
+    const [pendingDocuments, pendingDrivers, activeDrivers, totalDrivers] = await Promise.all([
+      this.prisma.document.count({ where: { status: DocumentStatus.PENDING } }),
+      this.prisma.user.count({
+        where: {
+          role: Role.DRIVER,
+          accountStatus: {
+            in: [
+              AccountStatus.FACE_VERIFICATION_PENDING,
+              AccountStatus.DOCUMENTS_PENDING,
+              AccountStatus.ADMIN_REVIEW_PENDING,
+            ],
+          },
+        },
+      }),
+      this.prisma.user.count({
+        where: { role: Role.DRIVER, accountStatus: AccountStatus.ACTIVE },
+      }),
+      this.prisma.user.count({ where: { role: Role.DRIVER } }),
+    ]);
+
+    return {
+      pendingDocuments,
+      pendingDrivers,
+      activeDrivers,
+      totalDrivers,
+    };
+  }
+
+  async getLoginActivity() {
+    const users = await this.prisma.user.findMany({
+      where: { lastLoginAt: { not: null } },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        accountStatus: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+      orderBy: { lastLoginAt: 'desc' },
+      take: 100,
+    });
+
+    return users.map((user) => ({
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      accountStatus: user.accountStatus,
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
+    }));
+  }
+
   async getPendingDrivers() {
     const drivers = await this.prisma.user.findMany({
       where: { role: Role.DRIVER },

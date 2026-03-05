@@ -8,6 +8,7 @@ import { RidesModule } from './rides/rides.module';
 import { FaceVerificationModule } from './face-verification/face-verification.module';
 import { WalletModule } from './wallet/wallet.module';
 import { DocumentsModule } from './documents/documents.module';
+import { AdminModule } from './admin/admin.module';
 import { PrismaService } from './prisma.service';
 
 @Module({
@@ -26,6 +27,7 @@ import { PrismaService } from './prisma.service';
     FaceVerificationModule,
     WalletModule,
     DocumentsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],
