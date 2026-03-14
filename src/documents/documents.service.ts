@@ -341,6 +341,7 @@ export class DocumentsService {
       where: { id: driverId },
       data: {
         accountStatus: approved ? AccountStatus.ACTIVE : AccountStatus.REJECTED,
+        isVerified: approved ? true : false, // BUG FIX: synchroniser isVerified avec le statut du compte
       },
     });
 
@@ -397,7 +398,7 @@ export class DocumentsService {
       });
       await this.prisma.user.update({
         where: { id: userId },
-        data: { accountStatus: AccountStatus.ACTIVE },
+        data: { accountStatus: AccountStatus.ACTIVE, isVerified: true }, // BUG FIX: isVerified doit être true pour permettre la connexion
       });
       return;
     }

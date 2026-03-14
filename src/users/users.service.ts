@@ -83,8 +83,8 @@ export class UsersService {
       // Étape courante dans l'onboarding
       currentStep: !profile.faceVerified
         ? "face_verification"
-        : !profile.documentsUploaded
-          ? "document_upload"
+        : (profile.vehicleMake == null || profile.vehicleModel == null || profile.vehicleColor == null || profile.licensePlate == null)
+          ? "vehicle_registration"
           : !profile.adminApproved
             ? "pending_admin"
             : "active",

@@ -198,7 +198,7 @@ export class RidesGateway
         ? `${driver.driverProfile.vehicleMake ?? ''} ${driver.driverProfile.vehicleModel ?? ''} • ${driver.driverProfile.vehicleColor ?? ''}`
         : 'Véhicule non renseigné';
 
-      this.server.to(`ride_${data.rideId}`).emit(`ride_status_${data.rideId}`, {
+      const acceptPayload = {
         status: 'ACCEPTED',
         driverId: driver.id,
         driverName: driver.name,
@@ -206,7 +206,14 @@ export class RidesGateway
         vehicleInfo,
         licensePlate: driver.driverProfile?.licensePlate ?? 'Non renseigné',
         driverRating: '4.9 ⭐',
-      });
+      };
+
+      // Émettre sur la room de la course (si le client a fait join_ride)
+      this.server.to(`ride_\${data.rideId}`).emit(`ride_status_\${data.rideId}`, acceptPayload);
+
+      // BUG FIX: Notifier aussi directement le passager via sa room personnelle
+      // Garanti même si le client n'a pas encore appelé join_ride
+      this.server.to(`user_${ride.passengerId}`).emit('ride_accepted', acceptPayload);
 
       console.log(`✅ Course ${data.rideId} acceptée par ${driver.name}`);
     } catch (e) {

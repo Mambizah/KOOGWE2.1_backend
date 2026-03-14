@@ -1,7 +1,17 @@
-// REMPLACEZ src/admin/admin.service.ts
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AccountStatus, DocumentStatus, DocumentType, Role } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
+
+// BUG FIX: liste unifiée des documents obligatoires (était 3 ici, 6 dans documents.service)
+// Doit être IDENTIQUE à celle de documents.service.ts
+const REQUIRED_DRIVER_DOCS: DocumentType[] = [
+  DocumentType.ID_CARD_FRONT,
+  DocumentType.ID_CARD_BACK,
+  DocumentType.SELFIE_WITH_ID,
+  DocumentType.DRIVERS_LICENSE,
+  DocumentType.VEHICLE_REGISTRATION,
+  DocumentType.INSURANCE,
+];
 
 @Injectable()
 export class AdminService {
@@ -12,22 +22,21 @@ export class AdminService {
     if (fileUrl.startsWith('http://localhost')) {
       const idx = fileUrl.indexOf('/uploads/');
       if (idx >= 0) {
-        const base = process.env.PUBLIC_BASE_URL || process.env.RAILWAY_PUBLIC_DOMAIN
-          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '';
+        const base = process.env.PUBLIC_BASE_URL || (process.env.RAILWAY_PUBLIC_DOMAIN
+          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
         return `${base}${fileUrl.slice(idx)}`;
       }
     }
     return fileUrl;
   }
 
-  // ✅ FIX: ajoute driverName + url pour compatibilité frontend
   private mapDocumentForAdmin<T extends { fileUrl: string; user?: any }>(doc: T) {
     const resolved = { ...doc, fileUrl: this.resolveFileUrl(doc.fileUrl) };
     const name = resolved.user?.name || resolved.user?.email || 'Inconnu';
     return {
       ...resolved,
-      url:           resolved.fileUrl,   // alias attendu par le frontend
-      driverName:    name,               // alias attendu par le frontend
+      url:           resolved.fileUrl,
+      driverName:    name,
       uploaderName:  name,
       uploaderId:    resolved.user?.id    ?? null,
       uploaderEmail: resolved.user?.email ?? null,
@@ -43,8 +52,14 @@ export class AdminService {
     throw new BadRequestException('Le status doit être APPROVED ou REJECTED');
   }
 
+  // BUG FIX: utilise la liste complète à 6 documents
+  private hasAllRequiredApprovedDocuments(documents: Array<{ type: DocumentType; status: DocumentStatus }>) {
+    return REQUIRED_DRIVER_DOCS.every(r =>
+      documents.some(d => d.type === r && d.status === DocumentStatus.APPROVED)
+    );
+  }
+
   // ─── Dashboard ───────────────────────────────────────────────────────────────
-  // ✅ FIX: retourne exactement ce que le frontend attend
   async getDashboardStats() {
     const [
       totalDrivers, activeDrivers, pendingDrivers,
@@ -180,7 +195,6 @@ export class AdminService {
     return { page, limit, total, items };
   }
 
-  // ✅ AJOUTÉ: suspendre/activer n'importe quel utilisateur
   async setUserStatus(userId: string, status: 'ACTIVE' | 'SUSPENDED') {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Utilisateur introuvable');
@@ -253,7 +267,6 @@ export class AdminService {
     });
 
     if (targetStatus === DocumentStatus.REJECTED) {
-      // Retourner en DOCUMENTS_PENDING pour que le chauffeur re-uploade
       await this.prisma.user.update({
         where: { id: doc.userId },
         data: { accountStatus: 'DOCUMENTS_PENDING' as any },
@@ -263,7 +276,6 @@ export class AdminService {
         data: { adminApproved: false },
       }).catch(() => null);
     } else {
-      // ✅ FIX: vérifier si tous les docs obligatoires sont approuvés → activer le compte
       await this.autoActivateDriverIfReady(doc.userId);
     }
 
@@ -273,7 +285,7 @@ export class AdminService {
     };
   }
 
-  // ✅ FIX PRINCIPAL: activation automatique quand tous les docs sont approuvés
+  // BUG FIX: Active isVerified=true en même temps que accountStatus=ACTIVE
   private async autoActivateDriverIfReady(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -282,20 +294,23 @@ export class AdminService {
     if (!user || user.role !== Role.DRIVER) return;
 
     const allApproved = this.hasAllRequiredApprovedDocuments(user.documents);
+    const hasVehicleInfo = user.driverProfile?.vehicleMake
+      && user.driverProfile?.vehicleModel
+      && user.driverProfile?.licensePlate;
+    const faceVerified = user.driverProfile?.faceVerified;
 
-    if (allApproved) {
-      // ✅ Tous les docs approuvés → ACTIVER automatiquement
+    if (allApproved && hasVehicleInfo && faceVerified) {
+      // BUG FIX: isVerified doit être true pour permettre la connexion
       await this.prisma.user.update({
         where: { id: userId },
-        data: { accountStatus: AccountStatus.ACTIVE },
+        data: { accountStatus: AccountStatus.ACTIVE, isVerified: true },
       });
       await this.prisma.driverProfile.updateMany({
         where: { userId },
         data: { adminApproved: true, adminApprovedAt: new Date() },
       }).catch(() => null);
-      console.log(`✅ Chauffeur ${userId} activé automatiquement après approbation de tous les documents`);
+      console.log(`✅ Chauffeur ${userId} activé automatiquement`);
     } else {
-      // Docs partiellement approuvés → rester en ADMIN_REVIEW_PENDING
       await this.prisma.user.update({
         where: { id: userId },
         data: { accountStatus: 'ADMIN_REVIEW_PENDING' as any },
@@ -313,6 +328,7 @@ export class AdminService {
       throw new NotFoundException('Chauffeur introuvable');
 
     if (approved) {
+      // BUG FIX: isVerified=true en même temps que l'activation
       await this.prisma.$transaction([
         this.prisma.driverProfile.update({
           where: { userId: driverId },
@@ -320,7 +336,7 @@ export class AdminService {
         }),
         this.prisma.user.update({
           where: { id: driverId },
-          data: { accountStatus: AccountStatus.ACTIVE },
+          data: { accountStatus: AccountStatus.ACTIVE, isVerified: true },
         }),
       ]);
       return { success: true, message: 'Chauffeur approuvé et activé ✅' };
@@ -333,20 +349,10 @@ export class AdminService {
       }),
       this.prisma.user.update({
         where: { id: driverId },
-        data: { accountStatus: AccountStatus.REJECTED },
+        data: { accountStatus: AccountStatus.REJECTED, isVerified: false },
       }),
     ]);
     return { success: true, message: 'Chauffeur refusé ❌' };
-  }
-
-  // ✅ SIMPLIFIÉ: seulement les 3 docs obligatoires de base
-  private hasAllRequiredApprovedDocuments(documents: Array<{ type: DocumentType; status: DocumentStatus }>) {
-    const required: DocumentType[] = [
-      DocumentType.DRIVERS_LICENSE,
-      DocumentType.VEHICLE_REGISTRATION,
-      DocumentType.INSURANCE,
-    ];
-    return required.every(r => documents.some(d => d.type === r && d.status === DocumentStatus.APPROVED));
   }
 
   // ─── Finances ────────────────────────────────────────────────────────────────
