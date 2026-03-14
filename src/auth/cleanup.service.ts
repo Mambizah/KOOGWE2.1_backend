@@ -1,24 +1,34 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { AuthService } from './auth.service';
 
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+
 /**
- * Service de nettoyage automatique des inscriptions incomplètes.
- * 
- * Un chauffeur qui s'inscrit (nom, email, tel, mot de passe) mais
- * ne termine pas les étapes suivantes (vérification faciale, documents,
- * véhicule) ne doit pas rester en base de données.
- * 
- * Ce service supprime toutes les 6h les chauffeurs restés en état
- * FACE_VERIFICATION_PENDING depuis plus de 24h.
+ * Nettoyage automatique des inscriptions incomplètes (sans @nestjs/schedule).
+ * Tourne toutes les 6h via setInterval natif Node.js.
  */
 @Injectable()
-export class CleanupService {
+export class CleanupService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CleanupService.name);
+  private timer: NodeJS.Timeout | null = null;
 
   constructor(private readonly authService: AuthService) {}
 
-  @Cron(CronExpression.EVERY_6_HOURS)
+  onModuleInit() {
+    // Premier passage 1 minute après le démarrage (laisse Prisma se connecter)
+    setTimeout(() => this.handleCleanup(), 60_000);
+    // Puis toutes les 6h
+    this.timer = setInterval(() => this.handleCleanup(), SIX_HOURS_MS);
+    this.logger.log('✅ CleanupService démarré (intervalle: 6h)');
+  }
+
+  onModuleDestroy() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
   async handleCleanup() {
     this.logger.log('🧹 Nettoyage des inscriptions incomplètes...');
     try {
