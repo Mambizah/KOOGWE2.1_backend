@@ -3,7 +3,6 @@ import {
   Body, Controller, ForbiddenException, Get,
   Param, Patch, Post, Query, Request, UseGuards,
 } from '@nestjs/common';
-import { DocumentStatus } from '@prisma/client';
 import { AuthGuard } from '../auth/auth.guard';
 import { AdminService } from './admin.service';
 

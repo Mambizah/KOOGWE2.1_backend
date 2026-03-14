@@ -414,7 +414,7 @@ export class AdminService {
 
   // ─── Config ──────────────────────────────────────────────────────────────────
   async getConfig() { return { pricing: await this.getPricingConfig(), financials: await this.getFinancialsConfig() }; }
-  async updateConfig(payload: any) { return { success: true }; }
+  async updateConfig(_payload: any) { return { success: true }; }
   async getPricingConfig() { return { baseFare: 3.0, pricePerKm: { MOTO: 0.8, ECO: 1.2, CONFORT: 1.5 }, pricePerMinute: 0.3, minimumFare: 5.0, surgeMultiplier: 1.0 }; }
   async updatePricingConfig(payload: any) { return { success: true, data: payload }; }
   async getFinancialsConfig() { return { platformCommission: 20, driverShare: 80, currency: 'XOF' }; }

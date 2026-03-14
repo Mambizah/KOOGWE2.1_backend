@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { PrismaService } from "../prisma.service";
 
 export interface UpdateVehicleDto {
   vehicleMake?: string;
@@ -13,10 +13,12 @@ export class UsersService {
   constructor(private prisma: PrismaService) {}
 
   async updateVehicle(userId: string, data: UpdateVehicleDto) {
-    const profile = await this.prisma.driverProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('Profil chauffeur introuvable');
+    const existingProfile = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+    });
+    if (!existingProfile) throw new NotFoundException("Profil chauffeur introuvable");
 
-    return this.prisma.driverProfile.update({
+    const updatedProfile = await this.prisma.driverProfile.update({
       where: { userId },
       data: {
         vehicleMake: data.vehicleMake,
@@ -25,12 +27,23 @@ export class UsersService {
         licensePlate: data.licensePlate,
       },
     });
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        accountStatus: "ADMIN_REVIEW_PENDING",
+      },
+    });
+
+    return updatedProfile;
   }
 
   // ✅ Marquer la vérification faciale comme complète
   async markFaceVerified(userId: string) {
-    const profile = await this.prisma.driverProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('Profil chauffeur introuvable');
+    const profile = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+    });
+    if (!profile) throw new NotFoundException("Profil chauffeur introuvable");
 
     return this.prisma.driverProfile.update({
       where: { userId },
@@ -40,8 +53,10 @@ export class UsersService {
 
   // ✅ Marquer les documents comme uploadés
   async markDocumentsUploaded(userId: string) {
-    const profile = await this.prisma.driverProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('Profil chauffeur introuvable');
+    const profile = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+    });
+    if (!profile) throw new NotFoundException("Profil chauffeur introuvable");
 
     return this.prisma.driverProfile.update({
       where: { userId },
@@ -51,8 +66,10 @@ export class UsersService {
 
   // ✅ Statut global du chauffeur
   async getDriverStatus(userId: string) {
-    const profile = await this.prisma.driverProfile.findUnique({ where: { userId } });
-    if (!profile) throw new NotFoundException('Profil chauffeur introuvable');
+    const profile = await this.prisma.driverProfile.findUnique({
+      where: { userId },
+    });
+    if (!profile) throw new NotFoundException("Profil chauffeur introuvable");
 
     return {
       faceVerified: profile.faceVerified,
@@ -60,12 +77,12 @@ export class UsersService {
       adminApproved: profile.adminApproved,
       // Étape courante dans l'onboarding
       currentStep: !profile.faceVerified
-        ? 'face_verification'
+        ? "face_verification"
         : !profile.documentsUploaded
-        ? 'document_upload'
-        : !profile.adminApproved
-        ? 'pending_admin'
-        : 'active',
+          ? "document_upload"
+          : !profile.adminApproved
+            ? "pending_admin"
+            : "active",
     };
   }
 
@@ -74,7 +91,7 @@ export class UsersService {
       where: { id: userId },
       include: { driverProfile: true },
     });
-    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    if (!user) throw new NotFoundException("Utilisateur introuvable");
     const safeUser: any = { ...user };
     delete safeUser.password;
     delete safeUser.verificationToken;
