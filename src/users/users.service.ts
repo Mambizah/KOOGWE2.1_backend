@@ -58,10 +58,15 @@ export class UsersService {
     });
     if (!profile) throw new NotFoundException("Profil chauffeur introuvable");
 
-    return this.prisma.driverProfile.update({
+    await this.prisma.driverProfile.update({
       where: { userId },
       data: { documentsUploaded: true, documentsUploadedAt: new Date() },
     });
+
+    // L'app Flutter passe ensuite à l'écran véhicule.
+    // On conserve le statut DOCUMENTS_PENDING tant que l'admin n'a pas validé tous les documents.
+
+    return { success: true, message: "Documents téléchargés avec succès" };
   }
 
   // ✅ Statut global du chauffeur
