@@ -28,7 +28,7 @@ export class FaceVerificationService {
       data: {
         faceVerified: true,
         ...(faceImageUrl ? { faceImageUrl } : {}),
-        accountStatus: "VEHICLE_PENDING",
+        accountStatus: 'DOCUMENTS_PENDING',
       },
     });
 
