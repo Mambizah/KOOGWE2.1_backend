@@ -218,6 +218,9 @@ export class RidesGateway
       console.log(`✅ Course ${data.rideId} acceptée par ${driver.name}`);
     } catch (e) {
       console.error('Erreur accept_ride:', e);
+      // BUG FIX 5: Notifier le chauffeur de l'erreur (ex: type véhicule incompatible)
+      const msg = (e as any)?.message || 'Erreur lors de l\'acceptation';
+      client.emit('accept_ride_error', { message: msg });
     }
   }
 
@@ -307,10 +310,31 @@ export class RidesGateway
         },
       });
 
-      this.server.to(`ride_${data.rideId}`).emit(`ride_status_${data.rideId}`, {
+      const completedPayload = {
         status: 'COMPLETED',
         finalPrice: updatedRide.price,
-      });
+        rideId: data.rideId,
+        driver: updatedRide.driver,
+        passenger: updatedRide.passenger,
+      };
+
+      // Notifier la room de la course
+      this.server.to(`ride_${data.rideId}`).emit(`ride_status_${data.rideId}`, completedPayload);
+
+      // BUG FIX 1: Notifier DIRECTEMENT le passager même s'il n'est pas dans la room
+      if (updatedRide.passengerId) {
+        this.server.to(`user_${updatedRide.passengerId}`).emit('ride_completed', completedPayload);
+        this.server.to(`user_${updatedRide.passengerId}`).emit(`ride_status_${data.rideId}`, completedPayload);
+      }
+
+      // BUG FIX 1: Notifier aussi le chauffeur (pour son écran actif)
+      if (updatedRide.driverId) {
+        this.server.to(`user_${updatedRide.driverId}`).emit('trip_finished_driver', {
+          rideId: data.rideId,
+          finalPrice: updatedRide.price,
+          passengerName: updatedRide.passenger?.name,
+        });
+      }
 
       // Émettre 'trip_finished' pour rafraîchir history et wallet
       this.server.emit('trip_finished', {
@@ -332,6 +356,60 @@ export class RidesGateway
             totalEarnings: { increment: updatedRide.price },
           },
         });
+      }
+
+      // BUG FIX 6: Paiement automatique wallet si paymentMethod === WALLET
+      if (updatedRide.paymentMethod === 'WALLET' && !updatedRide.isPaid) {
+        try {
+          // Débiter le wallet du passager et créditer le chauffeur
+          const wallet = await this.prisma.wallet.findUnique({ where: { userId: updatedRide.passengerId } });
+          if (wallet && wallet.balance >= updatedRide.price) {
+            await this.prisma.$transaction([
+              this.prisma.wallet.update({
+                where: { userId: updatedRide.passengerId },
+                data: { balance: { decrement: updatedRide.price } },
+              }),
+              this.prisma.wallet.upsert({
+                where: { userId: updatedRide.driverId! },
+                create: { userId: updatedRide.driverId!, balance: updatedRide.price * 0.8 },
+                update: { balance: { increment: updatedRide.price * 0.8 } },
+              }),
+              this.prisma.ride.update({
+                where: { id: data.rideId },
+                data: { isPaid: true },
+              }),
+              this.prisma.transaction.create({
+                data: {
+                  userId: updatedRide.passengerId,
+                  type: 'PAYMENT',
+                  amount: updatedRide.price,
+                  status: 'COMPLETED',
+                  rideId: data.rideId,
+                },
+              }),
+            ]);
+            // Confirmer le paiement au passager
+            if (updatedRide.passengerId) {
+              this.server.to(`user_${updatedRide.passengerId}`).emit('payment_confirmed', {
+                rideId: data.rideId,
+                amount: updatedRide.price,
+                method: 'WALLET',
+                isPaid: true,
+              });
+            }
+            console.log(`💳 Paiement wallet auto: ${updatedRide.price}€ pour course ${data.rideId}`);
+          } else {
+            // Solde insuffisant - notifier le passager
+            if (updatedRide.passengerId) {
+              this.server.to(`user_${updatedRide.passengerId}`).emit('payment_failed', {
+                rideId: data.rideId,
+                reason: 'Solde insuffisant',
+              });
+            }
+          }
+        } catch (payErr) {
+          console.error('Erreur paiement wallet auto:', payErr);
+        }
       }
 
       console.log(`✅ Course ${data.rideId} terminée`);

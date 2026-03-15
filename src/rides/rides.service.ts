@@ -303,6 +303,15 @@ export class RidesService {
       throw new BadRequestException('Course non disponible');
     }
 
+    // BUG FIX 5: Vérifier que le type de véhicule du chauffeur correspond
+    const driverVehicleType = (driver.driverProfile.vehicleType ?? 'MOTO').toUpperCase();
+    const rideVehicleType = (ride.vehicleType ?? 'MOTO').toUpperCase();
+    if (driverVehicleType !== rideVehicleType) {
+      throw new BadRequestException(
+        \`Type de véhicule incompatible : le passager a demandé \${rideVehicleType}, votre véhicule est \${driverVehicleType}\`
+      );
+    }
+
     const updated = await this.prisma.ride.update({
       where: { id: rideId },
       data: { driverId, status: RideStatus.ACCEPTED, acceptedAt: new Date() },
@@ -416,11 +425,26 @@ export class RidesService {
       },
     });
 
-    this.ridesGateway.notifyRideRoom(rideId, 'ride_cancelled', {
+    const cancelPayload = {
       rideId,
       cancelledBy: role,
       status: RideStatus.CANCELLED,
-    });
+      passengerName: updated.passenger?.name,
+      driverName: updated.driver?.name,
+    };
+
+    // Notifier la room
+    this.ridesGateway.notifyRideRoom(rideId, 'ride_cancelled', cancelPayload);
+
+    // BUG FIX 4: Notifier le chauffeur DIRECTEMENT via sa room personnelle
+    // (le chauffeur peut ne pas être dans join_ride au moment de l'annulation)
+    if (updated.driverId) {
+      this.ridesGateway.notifyPassenger(updated.driverId, 'ride_cancelled', cancelPayload);
+    }
+    // Notifier aussi le passager si c'est le chauffeur qui annule
+    if (updated.passengerId && role === 'DRIVER') {
+      this.ridesGateway.notifyPassenger(updated.passengerId, 'ride_cancelled', cancelPayload);
+    }
 
     if (updated.passenger?.email) {
       await this.mailService.sendRideCancelledEmail(updated.passenger.email, { rideId: updated.id });
