@@ -198,4 +198,71 @@ export class WalletService {
       take: 50,
     });
   }
+  // BUG FIX 1: méthodes Stripe intent appelées par Flutter wallet_screen
+  // Crée un PaymentIntent Stripe et retourne le clientSecret
+  async createRechargeIntent(userId: string, amount: number): Promise<{ clientSecret: string; paymentIntentId: string }> {
+    // Si Stripe SDK est configuré, utiliser l'API Stripe
+    // Sinon, retourner un mock pour le développement
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      // Mode dev: simuler un intent
+      const mockId = `pi_mock_${Date.now()}`;
+      return { clientSecret: `${mockId}_secret_mock`, paymentIntentId: mockId };
+    }
+    try {
+      const stripe = require('stripe')(stripeSecretKey);
+      const intent = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100), // centimes
+        currency: 'eur',
+        metadata: { userId },
+      });
+      return { clientSecret: intent.client_secret, paymentIntentId: intent.id };
+    } catch (e) {
+      throw new Error(`Stripe error: ${(e as any).message}`);
+    }
+  }
+
+  // Confirme le paiement Stripe et crédite le wallet
+  async confirmRechargeIntent(paymentIntentId: string): Promise<{ success: boolean; balance: number }> {
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    let amount = 0;
+    let userId = '';
+
+    if (stripeSecretKey && !paymentIntentId.startsWith('pi_mock_')) {
+      try {
+        const stripe = require('stripe')(stripeSecretKey);
+        const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (intent.status !== 'succeeded') {
+          throw new Error('Paiement non confirmé');
+        }
+        amount = intent.amount / 100;
+        userId = intent.metadata?.userId ?? '';
+      } catch (e) {
+        throw new Error(`Stripe confirm error: ${(e as any).message}`);
+      }
+    } else {
+      // Mode mock dev — montant fixe 10€
+      amount = 10;
+      userId = ''; // sera ignoré si vide
+    }
+
+    if (userId) {
+      const wallet = await this.prisma.wallet.update({
+        where: { userId },
+        data: { balance: { increment: amount } },
+      });
+      await this.prisma.transaction.create({
+        data: {
+          userId,
+          type: 'RECHARGE',
+          amount,
+          status: 'COMPLETED',
+          stripePaymentId: paymentIntentId,
+        },
+      });
+      return { success: true, balance: wallet.balance };
+    }
+    return { success: true, balance: 0 };
+  }
+
 }

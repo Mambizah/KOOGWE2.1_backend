@@ -28,10 +28,12 @@ export class UsersService {
       },
     });
 
+    // BUG FIX 2: après le véhicule, le chauffeur doit encore uploader ses docs
+    // Donc DOCUMENTS_PENDING (pas ADMIN_REVIEW_PENDING qui saute l'étape documents)
     await this.prisma.user.update({
       where: { id: userId },
       data: {
-        accountStatus: "ADMIN_REVIEW_PENDING",
+        accountStatus: "DOCUMENTS_PENDING",
       },
     });
 
@@ -63,10 +65,14 @@ export class UsersService {
       data: { documentsUploaded: true, documentsUploadedAt: new Date() },
     });
 
-    // L'app Flutter passe ensuite à l'écran véhicule.
-    // On conserve le statut DOCUMENTS_PENDING tant que l'admin n'a pas validé tous les documents.
+    // BUG FIX: passer à ADMIN_REVIEW_PENDING pour que l'admin voie ce chauffeur
+    // C'est ici (submit final des docs) et non dans uploadBase64Document (upload individuel)
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { accountStatus: 'ADMIN_REVIEW_PENDING' as any },
+    });
 
-    return { success: true, message: "Documents téléchargés avec succès" };
+    return { success: true, message: "Documents soumis avec succès — en attente de validation" };
   }
 
   // ✅ Statut global du chauffeur

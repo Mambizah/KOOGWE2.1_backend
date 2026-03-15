@@ -145,17 +145,13 @@ export class DocumentsService {
       },
     });
 
+    // Marquer seulement que ce type de document a été reçu
+    // NE PAS changer accountStatus ici — le chauffeur doit uploader tous les docs d'abord
+    // C'est markDocumentsUploaded() qui passera à ADMIN_REVIEW_PENDING après le submit final
     await this.prisma.driverProfile
       .update({
         where: { userId },
         data: { documentsUploaded: true, documentsUploadedAt: new Date() },
-      })
-      .catch(() => undefined);
-
-    await this.prisma.user
-      .update({
-        where: { id: userId },
-        data: { accountStatus: AccountStatus.ADMIN_REVIEW_PENDING },
       })
       .catch(() => undefined);
 

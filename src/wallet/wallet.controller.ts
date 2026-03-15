@@ -39,3 +39,13 @@ export class WalletController {
     return this.walletService.getTransactionHistory(userId);
   }
 }
+  // BUG FIX 1: endpoints Stripe manquants — Flutter appelle ces routes
+  @Post('create-recharge-intent')
+  async createRechargeIntent(@Body() dto: { userId: string; amount: number }) {
+    return this.walletService.createRechargeIntent(dto.userId, dto.amount);
+  }
+
+  @Post('confirm-recharge')
+  async confirmRecharge(@Body() dto: { paymentIntentId: string }) {
+    return this.walletService.confirmRechargeIntent(dto.paymentIntentId);
+  }
