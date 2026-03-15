@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { RidesGateway } from '../rides/rides.gateway';
 import { AccountStatus, DocumentStatus, DocumentType, Role } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 
@@ -15,7 +16,10 @@ const REQUIRED_DRIVER_DOCS: DocumentType[] = [
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private ridesGateway: RidesGateway,
+  ) {}
 
   private resolveFileUrl(fileUrl: string) {
     if (!fileUrl) return fileUrl;
@@ -309,6 +313,9 @@ export class AdminService {
         where: { userId },
         data: { adminApproved: true, adminApprovedAt: new Date() },
       }).catch(() => null);
+      this.ridesGateway.notifyPassenger(userId, 'account_activated', {
+        message: 'Votre compte est maintenant actif ! Vous pouvez accepter des courses.',
+      });
       console.log(`✅ Chauffeur ${userId} activé automatiquement`);
     } else {
       await this.prisma.user.update({
@@ -339,6 +346,10 @@ export class AdminService {
           data: { accountStatus: AccountStatus.ACTIVE, isVerified: true },
         }),
       ]);
+      // Notifier le chauffeur en temps réel via socket
+      this.ridesGateway.notifyPassenger(driverId, 'account_activated', {
+        message: 'Votre compte est maintenant actif ! Vous pouvez accepter des courses.',
+      });
       return { success: true, message: 'Chauffeur approuvé et activé ✅' };
     }
 
