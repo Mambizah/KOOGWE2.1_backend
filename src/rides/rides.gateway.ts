@@ -12,7 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma.service';
-import { RideStatus } from '@prisma/client';
+import { RideStatus, PaymentMethod } from '@prisma/client';
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -219,7 +219,7 @@ export class RidesGateway
     } catch (e) {
       console.error('Erreur accept_ride:', e);
       // BUG FIX 5: Notifier le chauffeur de l'erreur (ex: type véhicule incompatible)
-      const msg = (e as any)?.message || 'Erreur lors de l\'acceptation';
+      const msg = (e as any)?.message || "Erreur lors de l'acceptation";
       client.emit('accept_ride_error', { message: msg });
     }
   }
@@ -359,14 +359,16 @@ export class RidesGateway
       }
 
       // BUG FIX 6: Paiement automatique wallet si paymentMethod === WALLET
-      if (updatedRide.paymentMethod === 'WALLET' && !updatedRide.isPaid) {
+      if (updatedRide.paymentMethod === PaymentMethod.WALLET && !updatedRide.isPaid) {
         try {
           // Débiter le wallet du passager et créditer le chauffeur
-          const wallet = await this.prisma.wallet.findUnique({ where: { userId: updatedRide.passengerId } });
+          const wallet = updatedRide.passengerId
+            ? await this.prisma.wallet.findUnique({ where: { userId: updatedRide.passengerId } })
+            : null;
           if (wallet && wallet.balance >= updatedRide.price) {
             await this.prisma.$transaction([
               this.prisma.wallet.update({
-                where: { userId: updatedRide.passengerId },
+                where: { userId: updatedRide.passengerId! },
                 data: { balance: { decrement: updatedRide.price } },
               }),
               this.prisma.wallet.upsert({
@@ -380,7 +382,7 @@ export class RidesGateway
               }),
               this.prisma.transaction.create({
                 data: {
-                  userId: updatedRide.passengerId,
+                  userId: updatedRide.passengerId!,
                   type: 'PAYMENT',
                   amount: updatedRide.price,
                   status: 'COMPLETED',
@@ -390,7 +392,7 @@ export class RidesGateway
             ]);
             // Confirmer le paiement au passager
             if (updatedRide.passengerId) {
-              this.server.to(`user_${updatedRide.passengerId}`).emit('payment_confirmed', {
+              this.server.to(`user_${updatedRide.passengerId!}`).emit('payment_confirmed', {
                 rideId: data.rideId,
                 amount: updatedRide.price,
                 method: 'WALLET',

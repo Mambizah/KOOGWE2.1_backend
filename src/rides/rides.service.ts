@@ -308,7 +308,7 @@ export class RidesService {
     const rideVehicleType = (ride.vehicleType ?? 'MOTO').toUpperCase();
     if (driverVehicleType !== rideVehicleType) {
       throw new BadRequestException(
-        \`Type de véhicule incompatible : le passager a demandé \${rideVehicleType}, votre véhicule est \${driverVehicleType}\`
+        `Type de véhicule incompatible : le passager a demandé ${rideVehicleType}, votre véhicule est ${driverVehicleType}`
       );
     }
 

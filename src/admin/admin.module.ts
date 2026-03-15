@@ -5,7 +5,7 @@ import { AdminController } from './admin.controller';
 import { AdminGateway } from './admin.gateway';
 import { AdminService } from './admin.service';
 import { PrismaService } from '../prisma.service';
-import { RidesGateway } from '../rides/rides.gateway';
+import { RidesModule } from '../rides/rides.module';
 
 @Module({
   imports: [
@@ -17,9 +17,10 @@ import { RidesGateway } from '../rides/rides.gateway';
         signOptions: { expiresIn: config.get('JWT_EXPIRES_IN', '1d') as any },
       }),
     }),
+    RidesModule, // Import RidesModule to get RidesGateway via DI
   ],
   controllers: [AdminController],
-  providers: [AdminService, AdminGateway, PrismaService, RidesGateway],
+  providers: [AdminService, AdminGateway, PrismaService],
   exports: [AdminService],
 })
 export class AdminModule {}
