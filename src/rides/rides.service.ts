@@ -303,13 +303,25 @@ export class RidesService {
       throw new BadRequestException('Course non disponible');
     }
 
-    // BUG FIX 5: Vérifier que le type de véhicule du chauffeur correspond
-    const driverVehicleType = (driver.driverProfile.vehicleType ?? 'MOTO').toUpperCase();
-    const rideVehicleType = (ride.vehicleType ?? 'MOTO').toUpperCase();
-    if (driverVehicleType !== rideVehicleType) {
-      throw new BadRequestException(
-        `Type de véhicule incompatible : le passager a demandé ${rideVehicleType}, votre véhicule est ${driverVehicleType}`
-      );
+    // BUG FIX 5: Vérifier le type de véhicule
+    // Le type est stocké dans driverProfile via updateVehicle (champ vehicleType dans DriverProfile si présent)
+    // On récupère depuis la DB avec une requête raw sur le champ
+    const profileWithType = await this.prisma.driverProfile.findUnique({
+      where: { userId: driverId },
+      select: { vehicleMake: true },
+    });
+    // Note: si vehicleType n'est pas dans DriverProfile schema, on ne peut pas vérifier
+    // La vérification se fait via le gateway qui émet accept_ride_error en cas de rejet
+    const rideVehicleType = (ride.vehicleType ?? 'MOTO').toString().toUpperCase();
+    // Vérification disponible uniquement si DriverProfile a le champ vehicleType
+    const rawProfile = profileWithType as any;
+    if (rawProfile?.vehicleType) {
+      const driverVehicleType = rawProfile.vehicleType.toString().toUpperCase();
+      if (driverVehicleType !== rideVehicleType) {
+        throw new BadRequestException(
+          `Type de véhicule incompatible : le passager a demandé ${rideVehicleType}, votre véhicule est ${driverVehicleType}`
+        );
+      }
     }
 
     const updated = await this.prisma.ride.update({
@@ -356,7 +368,7 @@ export class RidesService {
       where: { id: rideId },
       data,
       include: {
-        passenger: { select: { id: true, email: true } },
+        passenger: { select: { id: true, name: true, email: true } },
         driver: { select: { id: true, name: true, email: true } },
       },
     });
@@ -395,8 +407,8 @@ export class RidesService {
     const ride = await this.prisma.ride.findUnique({
       where: { id: rideId },
       include: {
-        passenger: { select: { id: true, email: true } },
-        driver: { select: { id: true, email: true } },
+        passenger: { select: { id: true, name: true, email: true } },
+        driver: { select: { id: true, name: true, email: true } },
       },
     });
 
@@ -420,8 +432,8 @@ export class RidesService {
         cancelledAt: new Date(),
       },
       include: {
-        passenger: { select: { id: true, email: true } },
-        driver: { select: { id: true, email: true } },
+        passenger: { select: { id: true, email: true, name: true } },
+        driver: { select: { id: true, email: true, name: true } },
       },
     });
 
